@@ -8,6 +8,8 @@ Two ways to run it:
 Options:
   --device {auto,cpu,mps,cuda}   where to run (default: auto)
   --steps N                      number of timed steps (default: 300)
+  --batch-size N                 samples per step, per process (default: 256)
+  --out PATH                     where to save the JSON result
   --sync-mode {sync,no_sync,no_ddp}
                                  sync:    normal DDP, gradients all-reduced every step (default)
                                  no_sync: DDP wrapper, but gradients are never all-reduced
@@ -40,7 +42,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.data.distributed import DistributedSampler
 
 # ---- Settings (big enough that one step takes a few ms on a laptop CPU) ----
-BATCH_SIZE = 256     # samples per training step, per process
+BATCH_SIZE = 256     # default samples per training step, per process (--batch-size)
 INPUT_SIZE = 512     # number of features in each fake sample
 HIDDEN_SIZE = 2048   # size of each hidden layer
 NUM_CLASSES = 10     # number of fake labels
@@ -58,6 +60,10 @@ def parse_args():
                         help="number of timed training steps (default: 300)")
     parser.add_argument("--sync-mode", choices=["sync", "no_sync", "no_ddp"], default="sync",
                         help="how gradients are shared between processes (default: sync)")
+    parser.add_argument("--batch-size", type=int, default=BATCH_SIZE,
+                        help=f"samples per step, per process (default: {BATCH_SIZE})")
+    parser.add_argument("--out", default=None,
+                        help="where to save the JSON result (default: results/<device>_p<N>_bs<B>_<mode>.json)")
     return parser.parse_args()
 
 
@@ -175,7 +181,7 @@ def main():
     # Fake dataset: random inputs and labels. Sized so every process gets
     # exactly WARMUP_STEPS + args.steps batches.
     total_steps = WARMUP_STEPS + args.steps
-    num_samples = BATCH_SIZE * total_steps * world_size
+    num_samples = args.batch_size * total_steps * world_size
     dataset = TensorDataset(
         torch.randn(num_samples, INPUT_SIZE),
         torch.randint(0, NUM_CLASSES, (num_samples,)),
@@ -184,7 +190,7 @@ def main():
     # DistributedSampler gives each process a different slice of the data.
     # With 1 process it simply returns all the data.
     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=False)
-    loader = DataLoader(dataset, batch_size=BATCH_SIZE, sampler=sampler)
+    loader = DataLoader(dataset, batch_size=args.batch_size, sampler=sampler)
 
     def train_step(inputs, labels):
         inputs, labels = inputs.to(device), labels.to(device)
@@ -220,7 +226,7 @@ def main():
 
     # All numbers below come from the measured run above.
     if is_main:
-        total_samples = BATCH_SIZE * args.steps * world_size  # across all processes
+        total_samples = args.batch_size * args.steps * world_size  # across all processes
         percentiles = statistics.quantiles(step_times_ms, n=100)  # 99 cut points: p1..p99
         results = {
             "device": str(device),
@@ -230,7 +236,7 @@ def main():
             "cpu_threads_per_process": torch.get_num_threads(),
             "torch_version": torch.__version__,
             "platform": platform.platform(),
-            "batch_size_per_process": BATCH_SIZE,
+            "batch_size_per_process": args.batch_size,
             "timed_steps": args.steps,
             "total_time_sec": total_time,
             "samples_per_sec": total_samples / total_time,
@@ -253,8 +259,9 @@ def main():
         print(f"Final loss:       {results['final_loss_rank0']:.4f}  (rank 0)")
 
         # One file per setup, e.g. results/cpu_p2_bs256_sync.json, so runs don't overwrite each other.
-        os.makedirs(RESULTS_DIR, exist_ok=True)
-        path = os.path.join(RESULTS_DIR, f"{device.type}_p{world_size}_bs{BATCH_SIZE}_{args.sync_mode}.json")
+        path = args.out or os.path.join(
+            RESULTS_DIR, f"{device.type}_p{world_size}_bs{args.batch_size}_{args.sync_mode}.json")
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         with open(path, "w") as f:
             json.dump(results, f, indent=2)
         print(f"Saved results to {path}")

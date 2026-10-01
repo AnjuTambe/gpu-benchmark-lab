@@ -1,0 +1,10 @@
+/Users/anjali/gpu-benchmark-lab/.venv/bin/python -m torch.distributed.run --nnodes=1 --nproc_per_node=1 --master_addr=127.0.0.1 --master_port=56159 train.py --device cpu --steps 300 --batch-size 256 --sync-mode sync --out results/20261001-081503/runs/cpu_p1_bs256_sync_r3.json
+
+W1001 08:19:00.602000 60512 .venv/lib/python3.13/site-packages/torch/distributed/elastic/multiprocessing/redirects.py:35] NOTE: Redirects are currently not supported in MacOs.
+Processes: 1  |  Device: cpu  |  Backend: none  |  CPU threads per process: 2  |  Sync mode: sync
+Total time:       2.3753 s
+Samples per sec:  32332.3  (all processes combined)
+Time per step:    7.918 ms  (p50 7.400, p95 11.100)
+All-reduce:       n/a (single process)
+Final loss:       2.3117  (rank 0)
+Saved results to results/20261001-081503/runs/cpu_p1_bs256_sync_r3.json

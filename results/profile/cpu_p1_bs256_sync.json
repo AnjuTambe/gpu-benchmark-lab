@@ -1,0 +1,32 @@
+{
+  "device": "cpu",
+  "world_size": 1,
+  "backend": null,
+  "sync_mode": "sync",
+  "cpu_threads_per_process": 2,
+  "torch_version": "2.14.1",
+  "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "batch_size_per_process": 256,
+  "timed_steps": 300,
+  "total_time_sec": 2.1895909579470754,
+  "samples_per_sec": 35075.04436902061,
+  "time_per_step_ms": 7.2986365264902515,
+  "step_p50_ms": 7.156811887398362,
+  "step_p95_ms": 7.994699594564736,
+  "grad_values": 5267466,
+  "comm_ms_per_allreduce": null,
+  "final_loss_rank0": 2.3055856227874756,
+  "profile": {
+    "rank": 0,
+    "profiled_steps": 10,
+    "step_ms_avg": 7.8526760000000015,
+    "forward_pct": 32.97677632440201,
+    "backward_pct": 48.827223993451376,
+    "optimizer_pct": 10.213160456384566,
+    "other_pct": 7.9828392257620475,
+    "allreduce": null,
+    "allreduce_note": "single process: no all-reduce",
+    "trace_file": "results/profile/cpu_p1_bs256_sync_rank0_trace.json",
+    "summary_file": "results/profile/cpu_p1_bs256_sync_rank0_profile.txt"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "device": "cpu",
+  "world_size": 2,
+  "backend": "gloo",
+  "sync_mode": "sync",
+  "cpu_threads_per_process": 2,
+  "torch_version": "2.14.1",
+  "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "batch_size_per_process": 256,
+  "timed_steps": 300,
+  "total_time_sec": 6.944581792224199,
+  "samples_per_sec": 22117.96254916097,
+  "time_per_step_ms": 23.148605974080663,
+  "step_p50_ms": 22.640520706772804,
+  "step_p95_ms": 25.13142053503543,
+  "grad_values": 5267466,
+  "comm_ms_per_allreduce": 3.5680974926799536,
+  "final_loss_rank0": 2.3017289638519287,
+  "profile": {
+    "rank": 0,
+    "profiled_steps": 10,
+    "step_ms_avg": 25.465085399999996,
+    "forward_pct": 21.06823878941321,
+    "backward_pct": 71.08856897844923,
+    "optimizer_pct": 5.184998908348452,
+    "other_pct": 2.658193323789102,
+    "allreduce": {
+      "event_names": [
+        "c10d::allreduce_",
+        "gloo:all_reduce"
+      ],
+      "calls_per_step": 2.0,
+      "launch_ms_per_step": 0.04507669999999998,
+      "work_ms_per_step_summed": 13.2638557,
+      "busy_ms_per_step_during_backward": 8.8084321,
+      "busy_pct_of_step": 34.59023192594516
+    },
+    "allreduce_note": "busy_ms_per_step_during_backward = wall time while at least one all-reduce ran inside backward; it overlaps with backward compute, so it is not simply added to the step time",
+    "trace_file": "results/profile/cpu_p2_bs256_sync_rank0_trace.json",
+    "summary_file": "results/profile/cpu_p2_bs256_sync_rank0_profile.txt"
+  }
+}

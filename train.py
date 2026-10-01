@@ -10,6 +10,7 @@ Options:
   --steps N                      number of timed steps (default: 300)
   --batch-size N                 samples per step, per process (default: 256)
   --out PATH                     where to save the JSON result
+  --profile                      profile a few steps after warmup with torch.profiler (see docs/profiling.md)
   --failure-mode {none,oom,worker-crash,bad-batch,bad-config}
                                  break the run on purpose (default: none), see inject_failure()
   --sync-mode {sync,no_sync,no_ddp}
@@ -40,6 +41,7 @@ from datetime import timedelta
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+from torch.profiler import ProfilerActivity, record_function
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.data.distributed import DistributedSampler
@@ -55,6 +57,8 @@ COMM_RUNS = 50       # timed all-reduce calls in the communication test
 RESULTS_DIR = "results"
 FAIL_AT_STEP = 3              # --failure-mode oom/worker-crash/bad-batch trigger at this step
 BAD_CONFIG_TIMEOUT_SEC = 15   # --failure-mode bad-config gives up connecting after this long
+PROFILE_WARMUP = 2            # --profile: steps the profiler runs but throws away (its own startup cost)
+PROFILE_STEPS = 10            # --profile: steps that are actually recorded
 
 
 def parse_args():
@@ -69,6 +73,8 @@ def parse_args():
                         help=f"samples per step, per process (default: {BATCH_SIZE})")
     parser.add_argument("--out", default=None,
                         help="where to save the JSON result (default: results/<device>_p<N>_bs<B>_<mode>.json)")
+    parser.add_argument("--profile", action="store_true",
+                        help=f"profile {PROFILE_STEPS} extra steps after warmup and save a summary and a trace")
     parser.add_argument("--failure-mode", default="none",
                         choices=["none", "oom", "worker-crash", "bad-batch", "bad-config"],
                         help="break the run on purpose to test failure analysis (default: none)")
@@ -190,6 +196,111 @@ def inject_failure(mode, step, rank, world_size, device, inputs):
     return inputs
 
 
+def is_comm_event(name):
+    """Profiler events that are gradient communication (e.g. 'gloo:all_reduce', 'c10d::allreduce_')."""
+    name = name.lower()
+    return "all_reduce" in name or "allreduce" in name
+
+
+def merged_length(intervals):
+    """Total length covered by a list of (start, end) intervals, counting overlaps once."""
+    total, current_end = 0, None
+    for start, end in sorted(intervals):
+        if current_end is None or start > current_end:
+            total += end - start
+            current_end = end
+        elif end > current_end:
+            total += end - current_end
+            current_end = end
+    return total
+
+
+def allreduce_during_backward(events):
+    """
+    Measure gradient all-reduce from profiler events. With gloo, DDP *starts* each
+    all-reduce on the main thread ('c10d::allreduce_', very short) and the real work
+    runs on gloo's own threads ('gloo:all_reduce'), at the same time as backward.
+    Returns per-step averages, in ms.
+    """
+    backward = [(e.time_range.start, e.time_range.end) for e in events if e.name == "backward"]
+    comm = [e for e in events if is_comm_event(e.name)]
+    launches = [e for e in comm if e.name.startswith("c10d::")]
+    work = [e for e in comm if not e.name.startswith("c10d::")]
+
+    # Wall time during which at least one all-reduce was running inside a backward range.
+    clipped = []
+    for e in work:
+        for b_start, b_end in backward:
+            start, end = max(e.time_range.start, b_start), min(e.time_range.end, b_end)
+            if end > start:
+                clipped.append((start, end))
+    steps = len(backward) or 1
+    return {
+        "event_names": sorted({e.name for e in comm}),
+        "calls_per_step": len(launches) / steps,
+        "launch_ms_per_step": sum(e.cpu_time_total for e in launches) / steps / 1000,
+        "work_ms_per_step_summed": sum(e.cpu_time_total for e in work) / steps / 1000,
+        "busy_ms_per_step_during_backward": merged_length(clipped) / steps / 1000,
+    }
+
+
+def save_profile(prof, base, rank, device, world_size):
+    """
+    Save the profiler's summary table and chrome trace, and work out how the
+    step time splits into forward / backward / optimizer. Returns a dict for results.
+    All numbers are CPU wall time of the recorded ranges, averaged over PROFILE_STEPS.
+    """
+    trace_file = f"{base}_rank{rank}_trace.json"
+    summary_file = f"{base}_rank{rank}_profile.txt"
+    prof.export_chrome_trace(trace_file)
+
+    averages = prof.key_averages()
+    by_name = {e.key: e for e in averages}
+    # The profiler marks each step as "ProfilerStep#N"; together they are the whole profiled time.
+    step_us = sum(e.cpu_time_total for e in averages if e.key.startswith("ProfilerStep"))
+
+    def share(name):
+        return by_name[name].cpu_time_total / step_us * 100 if name in by_name else 0.0
+
+    info = {
+        "rank": rank,
+        "profiled_steps": PROFILE_STEPS,
+        "step_ms_avg": step_us / PROFILE_STEPS / 1000,
+        "forward_pct": share("forward"),
+        "backward_pct": share("backward"),
+        "optimizer_pct": share("optimizer"),
+    }
+    info["other_pct"] = 100 - info["forward_pct"] - info["backward_pct"] - info["optimizer_pct"]
+
+    # Gradient all-reduce, if the profiler recorded it.
+    events = prof.events()
+    if world_size == 1:
+        info["allreduce"] = None
+        info["allreduce_note"] = "single process: no all-reduce"
+    elif not any(is_comm_event(e.name) and not e.name.startswith("c10d::") for e in events):
+        info["allreduce"] = None
+        info["allreduce_note"] = "the profiler recorded no all-reduce work events, so it cannot be measured here"
+    else:
+        info["allreduce"] = allreduce_during_backward(events)
+        info["allreduce"]["busy_pct_of_step"] = (info["allreduce"]["busy_ms_per_step_during_backward"]
+                                                 / info["step_ms_avg"] * 100)
+        info["allreduce_note"] = ("busy_ms_per_step_during_backward = wall time while at least one all-reduce "
+                                  "ran inside backward; it overlaps with backward compute, so it is not "
+                                  "simply added to the step time")
+
+    sort_by = "cuda_time_total" if device.type == "cuda" else "cpu_time_total"
+    with open(summary_file, "w") as f:
+        f.write(f"Profile of rank {rank}, {PROFILE_STEPS} steps, device {device}, {world_size} process(es)\n")
+        f.write(f"Average step: {info['step_ms_avg']:.3f} ms  |  forward {info['forward_pct']:.1f}%  "
+                f"backward {info['backward_pct']:.1f}%  optimizer {info['optimizer_pct']:.1f}%  "
+                f"other {info['other_pct']:.1f}%\n")
+        f.write(f"All-reduce: {json.dumps(info['allreduce']) if info['allreduce'] else info['allreduce_note']}\n\n")
+        f.write(averages.table(sort_by=sort_by, row_limit=20))
+    info["trace_file"] = trace_file
+    info["summary_file"] = summary_file
+    return info
+
+
 def main():
     args = parse_args()
     rank, local_rank, world_size = read_torchrun_env()
@@ -236,7 +347,7 @@ def main():
 
     # Fake dataset: random inputs and labels. Sized so every process gets
     # exactly WARMUP_STEPS + args.steps batches.
-    total_steps = WARMUP_STEPS + args.steps
+    total_steps = WARMUP_STEPS + args.steps + (PROFILE_WARMUP + PROFILE_STEPS if args.profile else 0)
     num_samples = args.batch_size * total_steps * world_size
     dataset = TensorDataset(
         torch.randn(num_samples, INPUT_SIZE),
@@ -251,33 +362,61 @@ def main():
     def train_step(step, inputs, labels):
         inputs, labels = inputs.to(device), labels.to(device)
         inputs = inject_failure(args.failure_mode, step, rank, world_size, device, inputs)
-        optimizer.zero_grad()
         # --sync-mode no_sync: DDP's no_sync() skips the gradient all-reduce in backward().
         if use_ddp and args.sync_mode == "no_sync":
             grad_sync = model.no_sync()
         else:
             grad_sync = contextlib.nullcontext()
+        # The record_function ranges name each part of the step in the profiler output.
         with grad_sync:
-            loss = loss_fn(model(inputs), labels)
+            with record_function("forward"):
+                loss = loss_fn(model(inputs), labels)
             # Stop with a clear error instead of silently training on garbage.
             if not torch.isfinite(loss):
                 raise FloatingPointError(f"NaN loss detected on rank {rank} at step {step} "
                                          f"(loss={loss.item()}). Check the input batch for NaN/Inf values.")
-            loss.backward()  # with DDP (sync mode), gradients are shared between processes here
-        optimizer.step()
+            with record_function("backward"):
+                loss.backward()  # with DDP (sync mode), gradients are shared between processes here
+        with record_function("optimizer"):
+            optimizer.step()
+            optimizer.zero_grad()  # clear gradients for the next step
         return loss
 
     batches = iter(loader)
+
+    # Where results go, e.g. results/cpu_p2_bs256_sync.json. Profile files are saved next to it.
+    path = args.out or os.path.join(
+        RESULTS_DIR, f"{device.type}_p{world_size}_bs{args.batch_size}_{args.sync_mode}.json")
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
 
     # Warm-up: not timed.
     for step in range(WARMUP_STEPS):
         train_step(step, *next(batches))
     sync(device, world_size)
+    next_step = WARMUP_STEPS
+
+    # Profiling: separate extra steps, so the profiler's overhead does not affect the timed run.
+    profile_info = None
+    if args.profile:
+        activities = [ProfilerActivity.CPU] + ([ProfilerActivity.CUDA] if device.type == "cuda" else [])
+        schedule = torch.profiler.schedule(wait=0, warmup=PROFILE_WARMUP, active=PROFILE_STEPS)
+        base = path[:-len(".json")] if path.endswith(".json") else path
+        saved = []  # the profiler clears its events after each cycle, so save them in on_trace_ready
+        with torch.profiler.profile(activities=activities, schedule=schedule,
+                                    on_trace_ready=lambda p: saved.append(
+                                        save_profile(p, base, rank, device, world_size))) as prof:
+            for step in range(next_step, next_step + PROFILE_WARMUP + PROFILE_STEPS):
+                train_step(step, *next(batches))
+                sync_device(device)
+                prof.step()  # tells the profiler a step has finished
+        next_step += PROFILE_WARMUP + PROFILE_STEPS
+        profile_info = saved[0]
+        sync(device, world_size)
 
     # Timed run. We also time every step on its own to get p50/p95 latency.
     step_times_ms = []
     start = time.perf_counter()
-    for step in range(WARMUP_STEPS, WARMUP_STEPS + args.steps):
+    for step in range(next_step, next_step + args.steps):
         step_start = time.perf_counter()
         loss = train_step(step, *next(batches))
         sync_device(device)  # make sure this step's GPU work is done before reading the clock
@@ -307,6 +446,7 @@ def main():
             "grad_values": num_grad_values,
             "comm_ms_per_allreduce": comm_ms,
             "final_loss_rank0": loss.item(),
+            "profile": profile_info,  # None unless --profile; measured on rank 0
         }
 
         print(f"Total time:       {results['total_time_sec']:.4f} s")
@@ -318,11 +458,13 @@ def main():
         else:
             print(f"All-reduce:       {comm_ms:.3f} ms for {num_grad_values:,} values")
         print(f"Final loss:       {results['final_loss_rank0']:.4f}  (rank 0)")
+        if profile_info:
+            print(f"Profile (rank 0): forward {profile_info['forward_pct']:.1f}%  "
+                  f"backward {profile_info['backward_pct']:.1f}%  "
+                  f"optimizer {profile_info['optimizer_pct']:.1f}%  other {profile_info['other_pct']:.1f}%  "
+                  f"of {profile_info['step_ms_avg']:.3f} ms/step")
+            print(f"Profile files:    {profile_info['summary_file']}, {profile_info['trace_file']}")
 
-        # One file per setup, e.g. results/cpu_p2_bs256_sync.json, so runs don't overwrite each other.
-        path = args.out or os.path.join(
-            RESULTS_DIR, f"{device.type}_p{world_size}_bs{args.batch_size}_{args.sync_mode}.json")
-        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         with open(path, "w") as f:
             json.dump(results, f, indent=2)
         print(f"Saved results to {path}")

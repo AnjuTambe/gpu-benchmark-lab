@@ -1,0 +1,29 @@
+Profile of rank 0, 10 steps, device cpu, 2 process(es)
+Average step: 25.465 ms  |  forward 21.1%  backward 71.1%  optimizer 5.2%  other 2.7%
+All-reduce: {"event_names": ["c10d::allreduce_", "gloo:all_reduce"], "calls_per_step": 2.0, "launch_ms_per_step": 0.04507669999999998, "work_ms_per_step_summed": 13.2638557, "busy_ms_per_step_during_backward": 8.8084321, "busy_pct_of_step": 34.59023192594516}
+
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                          ProfilerStep*         0.27%     691.640us       100.00%     254.651ms      25.465ms            10  
+                                               backward        30.52%      77.714ms        71.09%     181.028ms      18.103ms            10  
+                                        gloo:all_reduce         0.00%       0.000us             0     132.639ms       6.632ms            20  
+    autograd::engine::evaluate_function: AddmmBackward0         0.12%     302.449us        32.39%      82.481ms       2.749ms            30  
+                                         AddmmBackward0         0.08%     194.036us        31.45%      80.091ms       2.670ms            30  
+                                               aten::mm        31.29%      79.686ms        31.29%      79.692ms       1.594ms            50  
+                                                forward         0.16%     402.229us        21.07%      53.650ms       5.365ms            10  
+                        DistributedDataParallel.forward         0.57%       1.464ms        19.85%      50.543ms       5.054ms            10  
+                                           aten::linear         0.03%      77.967us        18.15%      46.226ms       1.541ms            30  
+                                            aten::addmm        17.61%      44.851ms        18.06%      45.983ms       1.533ms            30  
+                                              optimizer         0.18%     468.764us         5.18%      13.204ms       1.320ms            10  
+                                Optimizer.step#SGD.step         0.42%       1.082ms         4.93%      12.554ms       1.255ms            10  
+                                             aten::add_         4.50%      11.472ms         4.50%      11.472ms     191.195us            60  
+                                            aten::copy_         3.93%      10.020ms         3.93%      10.020ms      62.627us           160  
+     torch.distributed.ddp.reducer::copy_bucket_to_grad         0.03%      64.833us         3.50%       8.921ms     148.684us            60  
+autograd::engine::evaluate_function: torch::autograd...         0.13%     318.554us         3.37%       8.573ms     142.887us            60  
+                   torch::distributed::reducer::mul_out         0.02%      45.707us         3.01%       7.673ms     127.879us            60  
+                                              aten::mul         2.94%       7.478ms         3.00%       7.646ms     109.226us            70  
+enumerate(DataLoader)#_SingleProcessDataLoaderIter._...         1.03%       2.617ms         2.28%       5.816ms     581.626us            10  
+                                             aten::relu         0.06%     145.951us         1.12%       2.854ms     142.684us            20  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 254.651ms

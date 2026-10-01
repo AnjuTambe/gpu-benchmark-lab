@@ -1,0 +1,29 @@
+Profile of rank 0, 10 steps, device cpu, 1 process(es)
+Average step: 7.853 ms  |  forward 33.0%  backward 48.8%  optimizer 10.2%  other 8.0%
+All-reduce: single process: no all-reduce
+
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                          ProfilerStep*         0.58%     456.759us       100.00%      78.527ms       7.853ms            10  
+                                               backward         1.38%       1.082ms        48.83%      38.342ms       3.834ms            10  
+    autograd::engine::evaluate_function: AddmmBackward0         0.19%     149.254us        45.52%      35.746ms       1.192ms            30  
+                                         AddmmBackward0         0.13%     104.528us        44.11%      34.636ms       1.155ms            30  
+                                               aten::mm        43.86%      34.441ms        43.86%      34.443ms     688.867us            50  
+                                                forward         0.90%     707.944us        32.98%      25.896ms       2.590ms            10  
+                                           aten::linear         0.05%      35.864us        30.61%      24.036ms     801.200us            30  
+                                            aten::addmm        29.44%      23.115ms        30.44%      23.901ms     796.700us            30  
+                                              optimizer         0.33%     255.669us        10.21%       8.020ms     802.006us            10  
+                                Optimizer.step#SGD.step         0.79%     616.595us         9.75%       7.654ms     765.375us            10  
+                                             aten::add_         8.96%       7.037ms         8.96%       7.037ms     117.286us            60  
+enumerate(DataLoader)#_SingleProcessDataLoaderIter._...         3.55%       2.788ms         7.12%       5.594ms     559.433us            10  
+                                           aten::select         1.48%       1.160ms         1.92%       1.510ms       0.295us          5120  
+                                            aten::stack         0.60%     468.861us         1.65%       1.296ms      64.817us            20  
+     autograd::engine::evaluate_function: ReluBackward0         0.04%      27.879us         1.31%       1.028ms      51.397us            20  
+                                          ReluBackward0         0.05%      35.558us         1.27%       1.000ms      50.003us            20  
+                               aten::threshold_backward         1.23%     964.505us         1.23%     964.505us      48.225us            20  
+                                              aten::sum         1.13%     887.637us         1.17%     921.428us      30.714us            30  
+                                             aten::relu         0.11%      82.494us         1.14%     892.710us      44.636us            20  
+                                        aten::clamp_min         1.03%     810.216us         1.03%     810.216us      40.511us            20  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 78.527ms

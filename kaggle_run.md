@@ -45,8 +45,6 @@ You should see `CUDA available: True` and `GPU count: 2` on `GPU T4 x2`.
 !git log --oneline | head -3
 ```
 
-Replace `AnjuTambe` with your GitHub user name.
-
 ### Cell 3: install requirements, keeping Kaggle's PyTorch
 
 Kaggle already has a CUDA build of PyTorch. This installs everything in

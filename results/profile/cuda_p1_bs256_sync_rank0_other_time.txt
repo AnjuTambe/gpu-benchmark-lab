@@ -1,0 +1,16 @@
+What fills the 'other' time: Kaggle Tesla T4, 1 GPU, batch 256, rank 0
+Source: cuda_p1_bs256_sync_rank0_trace.json from the Kaggle run on 2026-10-01
+(trace files are not in git; this summary was extracted from it)
+Profiled steps: 10, average profiled step: 7.653 ms
+
+Main-thread operations outside forward/backward/optimizer, ms per profiled step:
+    2.809 ms  (1 per step)  enumerate(DataLoader)#_SingleProcessDataLoaderIter.__next__
+    0.246 ms  (2 per step)  aten::to
+    0.104 ms  (1 per step)  aten::isfinite
+    0.028 ms  (1 per step)  aten::is_nonzero
+    0.003 ms  (1 per step)  cudaDeviceSynchronize
+
+GPU-side time per profiled step:
+    3.468 ms  kernel
+    0.051 ms  gpu_memcpy
+    0.001 ms  gpu_memset

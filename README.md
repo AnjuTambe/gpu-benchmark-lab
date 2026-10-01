@@ -47,7 +47,7 @@ What the profiles (batch 256, `results/profile/`) show:
 - **This model is too small to gain much from a second device.** Scaling never gets above
   54%; at batch 128, two GPUs are slower in total than one, and on the Mac CPU two
   processes are slower than one at both batch sizes.
-- **On the Mac CPU**, about 7.7 ms of each 2-process step was the main thread waiting
+- **On the Mac CPU**, about 7.8 ms of each 2-process step was the main thread waiting
   inside backward for the gradient all-reduce. The rest of the slowdown came mostly from
   the two processes competing for the same CPU cores (slower math in forward and backward).
 - **On the T4 GPUs**, backward grew by about 3.5 ms with 2 GPUs, and the NCCL all-reduce
@@ -168,10 +168,44 @@ pytest -q
 The tests use small fake inputs and need neither a GPU nor `torchrun`. GitHub Actions
 runs them on every push with CPU-only PyTorch (`.github/workflows/tests.yml`).
 
+## What I learned
+
+1. **Separate the causes with controlled experiments.** On the Mac (2 processes,
+   batch 256, p50 step), `--sync-mode` split the slowdown into parts: 1 process
+   7.130 ms → 2 processes without DDP 12.556 ms (+5.4 ms: the processes competing for
+   the CPU) → DDP without gradient sync 12.678 ms (+0.1 ms: the DDP wrapper) → normal
+   DDP 22.716 ms (+10.0 ms: gradient sync). Source: `results/old/cpu_p*_bs256_*.json`.
+2. **My first guess was only about a quarter right.** I assumed the extra 2-process time
+   on the Mac was gradient communication. Measured on its own, an all-reduce of all
+   gradients took 3.8 ms, against 15.0 ms extra per step (p50 7.140 → 22.167 ms), so it
+   explained about 25%. The profile later showed why the sync costs more during real
+   training: inside backward, the main thread waited 7.8 ms per step for the all-reduce
+   to finish (backward self time 77.7 ms over 10 steps, against 1.1 ms with 1 process).
+   Sources: `results/old/cpu_p1_bs256.json`, `results/old/cpu_p2_bs256.json`,
+   `results/profile/cpu_p*_bs256_sync_rank0_profile.txt`.
+3. **"Other" time was the DataLoader, not the GPU copy.** On one T4, 43.6% of a 7.653 ms
+   profiled step was outside forward/backward/optimizer. I guessed it was copying the
+   batch to the GPU. The trace showed the DataLoader building the batch on the CPU took
+   2.809 ms per step, while the copy took 0.246 ms on the CPU side and 0.051 ms on the
+   GPU. Source: `results/profile/cuda_p1_bs256_sync_rank0_other_time.txt`.
+4. **Some bugs only show up on the real hardware.** The first GPU profile reported forward
+   0.0% and backward 0.0%. On CUDA the profiler records each named range twice (a CPU copy
+   and a GPU-side copy with 0 CPU time), and the code read the empty copy; on the Mac
+   there are no GPU copies, so all CPU tests had passed. The fix is in
+   `profile_stats.py`, covered by 7 tests in `tests/test_profile_stats.py` that use fake
+   GPU-style profiler events. (The buggy profile output was overwritten by the fixed
+   rerun, so only the corrected profiles are saved.)
+
 ## Limitations
 
 - The model is tiny and the data is random, on purpose: this measures overheads
   (communication, data loading, process contention), not real model training.
 - Tested on an Apple M4 Mac (CPU) and on Kaggle 2 × Tesla T4 only. More than 2 GPUs,
   other GPU types and multi-machine runs have not been tested.
+- The Kaggle numbers come from a single notebook session (2026-10-01). Each row is the
+  median of 3 repeats, but variation between sessions or machines has not been measured.
+- The "skipped: needs 2 GPUs, only 1 available" path has not been run on a real 1-GPU
+  machine.
+- Known analyzer gap: a worker that exits with an error message but no Python traceback
+  (for example `train.py`'s own "no NVIDIA GPU" message) may be labeled `WORKER_CRASH`.
 - Nsight Systems (`nsys`) is mentioned in the docs but has not been run.

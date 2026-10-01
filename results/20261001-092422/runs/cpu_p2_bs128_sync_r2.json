@@ -1,0 +1,19 @@
+{
+  "device": "cpu",
+  "world_size": 2,
+  "backend": "gloo",
+  "sync_mode": "sync",
+  "cpu_threads_per_process": 2,
+  "torch_version": "2.14.1",
+  "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "batch_size_per_process": 128,
+  "timed_steps": 300,
+  "total_time_sec": 5.456382208969444,
+  "samples_per_sec": 14075.26032061184,
+  "time_per_step_ms": 18.187940696564812,
+  "step_p50_ms": 18.14258354716003,
+  "step_p95_ms": 19.79279478546232,
+  "grad_values": 5267466,
+  "comm_ms_per_allreduce": 4.1191683150827885,
+  "final_loss_rank0": 2.3104052543640137
+}

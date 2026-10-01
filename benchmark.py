@@ -10,6 +10,12 @@ and writes results.csv there with one row per combination (median of the repeats
 When a run fails, analyzer.py classifies the failure and its type goes in the failure_type column.
 
   python benchmark.py --failure-demo    runs each train.py --failure-mode once and explains it
+
+Regression gate:
+  --save-baseline baselines/cpu_mac.csv   copy this sweep's results.csv there
+  --baseline baselines/cpu_mac.csv        compare this sweep with it; exit code 1 if any row's
+                                          samples/sec is more than --tolerance % lower, any row
+                                          failed, or no row could be checked
 """
 
 import argparse
@@ -17,6 +23,7 @@ import csv
 import json
 import os
 import platform
+import shutil
 import signal
 import socket
 import statistics
@@ -27,6 +34,7 @@ from datetime import datetime
 import torch
 
 from analyzer import classify, format_report
+from regression import compare, format_findings, gate_failures, load_csv
 
 CSV_COLUMNS = ["device", "procs", "batch_size", "sync_mode", "samples_per_sec", "step_p50_ms",
                "step_p95_ms", "allreduce_ms", "scaling_efficiency", "status", "failure_type"]
@@ -52,6 +60,10 @@ def parse_args():
     parser.add_argument("--threads", type=int, default=2, help="OMP_NUM_THREADS per process (default: 2)")
     parser.add_argument("--timeout", type=int, default=None,
                         help="seconds before a run counts as failed (default: 120, or 90 with --failure-demo)")
+    parser.add_argument("--save-baseline", metavar="PATH", help="copy this sweep's results.csv to PATH")
+    parser.add_argument("--baseline", metavar="PATH", help="compare this sweep with the baseline CSV at PATH")
+    parser.add_argument("--tolerance", type=float, default=15,
+                        help="allowed drop in samples/sec, in percent, before it counts as a regression (default: 15)")
     parser.add_argument("--failure-demo", action="store_true",
                         help="run each failure mode once and print the analyzer's explanation")
     args = parser.parse_args()
@@ -254,6 +266,19 @@ def main():
     for t in table:
         print("  ".join(v.ljust(w) for v, w in zip(t, widths)))
     print(f"\nSaved {csv_path}")
+
+    if args.save_baseline:
+        os.makedirs(os.path.dirname(args.save_baseline) or ".", exist_ok=True)
+        shutil.copyfile(csv_path, args.save_baseline)
+        print(f"Saved baseline to {args.save_baseline}")
+
+    # Regression gate: exit code 1 if any row regressed or failed, or if no row could be checked.
+    if args.baseline:
+        findings = compare(load_csv(csv_path), load_csv(args.baseline), args.tolerance)
+        print(f"\nComparing with baseline {args.baseline} (tolerance {args.tolerance:g}%)\n")
+        print(format_findings(findings, args.tolerance))
+        if gate_failures(findings):
+            sys.exit(1)
 
 
 if __name__ == "__main__":

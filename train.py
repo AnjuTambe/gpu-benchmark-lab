@@ -47,6 +47,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.data.distributed import DistributedSampler
 
 from hardware import hardware_info
+from profile_stats import allreduce_during_backward, has_allreduce_work, step_breakdown
 
 # ---- Settings (big enough that one step takes a few ms on a laptop CPU) ----
 BATCH_SIZE = 256     # default samples per training step, per process (--batch-size)
@@ -204,59 +205,6 @@ def inject_failure(mode, step, rank, world_size, device, inputs):
     return inputs
 
 
-def is_comm_event(name):
-    """Profiler events that are gradient communication (e.g. 'gloo:all_reduce', 'c10d::allreduce_')."""
-    name = name.lower()
-    return "all_reduce" in name or "allreduce" in name
-
-
-def merged_length(intervals):
-    """Total length covered by a list of (start, end) intervals, counting overlaps once."""
-    total, current_end = 0, None
-    for start, end in sorted(intervals):
-        if current_end is None or start > current_end:
-            total += end - start
-            current_end = end
-        elif end > current_end:
-            total += end - current_end
-            current_end = end
-    return total
-
-
-def allreduce_during_backward(events):
-    """
-    Measure gradient all-reduce from profiler events. With gloo, DDP *starts* each
-    all-reduce on the main thread ('c10d::allreduce_', very short) and the real work
-    runs on gloo's own threads ('gloo:all_reduce'), at the same time as backward.
-    Returns per-step averages, in ms.
-    """
-    backward = [(e.time_range.start, e.time_range.end) for e in events if e.name == "backward"]
-    comm = [e for e in events if is_comm_event(e.name)]
-    launches = [e for e in comm if e.name.startswith("c10d::")]
-    work = [e for e in comm if not e.name.startswith("c10d::")]
-    # On CUDA (NCCL), the real work is the GPU kernel; the CPU-side 'nccl:all_reduce' only queues it.
-    # (Not yet tested on a GPU.)
-    gpu_work = [e for e in work if str(e.device_type).endswith("CUDA")]
-    if gpu_work:
-        work = gpu_work
-
-    # Wall time during which at least one all-reduce was running inside a backward range.
-    clipped = []
-    for e in work:
-        for b_start, b_end in backward:
-            start, end = max(e.time_range.start, b_start), min(e.time_range.end, b_end)
-            if end > start:
-                clipped.append((start, end))
-    steps = len(backward) or 1
-    return {
-        "event_names": sorted({e.name for e in comm}),
-        "calls_per_step": len(launches) / steps,
-        "launch_ms_per_step": sum(e.cpu_time_total for e in launches) / steps / 1000,
-        "work_ms_per_step_summed": sum(e.time_range.end - e.time_range.start for e in work) / steps / 1000,
-        "busy_ms_per_step_during_backward": merged_length(clipped) / steps / 1000,
-    }
-
-
 def save_profile(prof, base, rank, device, world_size):
     """
     Save the profiler's summary table and chrome trace, and work out how the
@@ -269,29 +217,14 @@ def save_profile(prof, base, rank, device, world_size):
     prof.export_chrome_trace(trace_file)
 
     averages = prof.key_averages()
-    by_name = {e.key: e for e in averages}
-    # The profiler marks each step as "ProfilerStep#N"; together they are the whole profiled time.
-    step_us = sum(e.cpu_time_total for e in averages if e.key.startswith("ProfilerStep"))
-
-    def share(name):
-        return by_name[name].cpu_time_total / step_us * 100 if name in by_name else 0.0
-
-    info = {
-        "rank": rank,
-        "profiled_steps": PROFILE_STEPS,
-        "step_ms_avg": step_us / PROFILE_STEPS / 1000,
-        "forward_pct": share("forward"),
-        "backward_pct": share("backward"),
-        "optimizer_pct": share("optimizer"),
-    }
-    info["other_pct"] = 100 - info["forward_pct"] - info["backward_pct"] - info["optimizer_pct"]
+    info = {"rank": rank, "profiled_steps": PROFILE_STEPS, **step_breakdown(averages, PROFILE_STEPS)}
 
     # Gradient all-reduce, if the profiler recorded it.
     events = prof.events()
     if world_size == 1:
         info["allreduce"] = None
         info["allreduce_note"] = "single process: no all-reduce"
-    elif not any(is_comm_event(e.name) and not e.name.startswith("c10d::") for e in events):
+    elif not has_allreduce_work(events):
         info["allreduce"] = None
         info["allreduce_note"] = "the profiler recorded no all-reduce work events, so it cannot be measured here"
     else:
@@ -331,7 +264,8 @@ def main():
         start_bad_config(backend, rank, world_size)  # fails after a timeout, on purpose
     elif world_size > 1:
         backend = "nccl" if device.type == "cuda" else "gloo"
-        dist.init_process_group(backend=backend)
+        # device_id tells NCCL which GPU this process uses (avoids a barrier() warning).
+        dist.init_process_group(backend=backend, device_id=device if device.type == "cuda" else None)
 
     if is_main:
         print(f"Processes: {world_size}  |  Device: {device}  |  Backend: {backend or 'none'}  "

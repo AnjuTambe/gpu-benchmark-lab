@@ -1,0 +1,10 @@
+/usr/bin/python3 -m torch.distributed.run --nnodes=1 --nproc_per_node=1 --master_addr=127.0.0.1 --master_port=41751 train.py --device cuda --steps 300 --batch-size 256 --sync-mode sync --out results/20261001-183623/runs/cuda_p1_bs256_sync_r2.json --failure-mode none
+
+[W1001 18:38:54.807668287 socket.cpp:207] [c10d] The hostname of the client socket cannot be retrieved. err=-3
+Processes: 1  |  Device: cuda:0  |  Backend: none  |  CPU threads per process: 2  |  Sync mode: sync
+Total time:       1.2371 s
+Samples per sec:  62078.2  (all processes combined)
+Time per step:    4.124 ms  (p50 3.818, p95 5.502)
+All-reduce:       n/a (single process)
+Final loss:       2.3117  (rank 0)
+Saved results to results/20261001-183623/runs/cuda_p1_bs256_sync_r2.json

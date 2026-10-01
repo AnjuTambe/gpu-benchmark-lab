@@ -1,0 +1,5 @@
+device,procs,batch_size,sync_mode,samples_per_sec,step_p50_ms,step_p95_ms,allreduce_ms,scaling_efficiency,status,failure_type,system,cpu_name,gpu_name,gpu_count,torch_version,cuda_version
+cuda,1,128,sync,46009.1323359037,2.6932584999599385,3.457020399969224,,1.0,ok,,Linux-x86_64,Intel(R) Xeon(R) CPU @ 2.00GHz,Tesla T4,2,2.10.0+cu128,12.8
+cuda,2,128,sync,41261.94144158033,6.0426810000535625,7.281741550053766,3.1620215599991752,0.44841034102028865,ok,,Linux-x86_64,Intel(R) Xeon(R) CPU @ 2.00GHz,Tesla T4,2,2.10.0+cu128,12.8
+cuda,1,256,sync,62078.183040382544,3.817577999996047,5.5019132499637635,,1.0,ok,,Linux-x86_64,Intel(R) Xeon(R) CPU @ 2.00GHz,Tesla T4,2,2.10.0+cu128,12.8
+cuda,2,256,sync,67425.15183607728,7.2488850000240745,9.142865449950932,3.166044619999866,0.5430664086303595,ok,,Linux-x86_64,Intel(R) Xeon(R) CPU @ 2.00GHz,Tesla T4,2,2.10.0+cu128,12.8

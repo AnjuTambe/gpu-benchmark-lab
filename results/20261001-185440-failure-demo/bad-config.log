@@ -1,0 +1,94 @@
+/usr/bin/python3 -m torch.distributed.run --nnodes=1 --nproc_per_node=2 --master_addr=127.0.0.1 --master_port=35715 train.py --device cuda --steps 300 --batch-size 256 --sync-mode sync --out results/20261001-185440-failure-demo/bad-config.json --failure-mode bad-config
+
+[W1001 18:56:03.478541614 socket.cpp:207] [c10d] The hostname of the client socket cannot be retrieved. err=-3
+[failure-mode bad-config] rank 1: joining with world_size=3, but only 2 process(es) were started
+[failure-mode bad-config] rank 0: joining with world_size=3, but only 2 process(es) were started
+[W1001 18:56:14.797425704 socket.cpp:207] [c10d] The hostname of the client socket cannot be retrieved. err=-3
+[W1001 18:56:14.811756151 socket.cpp:207] [c10d] The hostname of the client socket cannot be retrieved. err=-3
+[W1001 18:56:29.825609654 socket.cpp:469] [c10d] waitForInput: poll for socket SocketImpl(fd=48, addr=[100:0:100:0:100:0:100:0]:30219, remote=[fdff:ffff::8053:3b25:0:0]:9695) returned 0, likely a timeout
+[W1001 18:56:29.825686389 socket.cpp:494] [c10d] waitForInput: socket SocketImpl(fd=48, addr=[100:0:100:0:100:0:100:0]:30219, remote=[fdff:ffff::8053:3b25:0:0]:9695) timed out after 15000ms
+[W1001 18:56:29.828063337 socket.cpp:469] [c10d] waitForInput: poll for socket SocketImpl(fd=48, addr=[100:0:100:0:100:0:100:0]:478, remote=[fdff:ffff::5017:8a0c:0:0]:3374) returned 0, likely a timeout
+[W1001 18:56:29.828121022 socket.cpp:494] [c10d] waitForInput: socket SocketImpl(fd=48, addr=[100:0:100:0:100:0:100:0]:478, remote=[fdff:ffff::5017:8a0c:0:0]:3374) timed out after 15000ms
+Traceback (most recent call last):
+  File "/kaggle/working/gpu-benchmark-lab/train.py", line 441, in <module>
+Traceback (most recent call last):
+  File "/kaggle/working/gpu-benchmark-lab/train.py", line 441, in <module>
+    main()    
+main()
+  File "/kaggle/working/gpu-benchmark-lab/train.py", line 264, in main
+  File "/kaggle/working/gpu-benchmark-lab/train.py", line 264, in main
+    start_bad_config(backend, rank, world_size)  # fails after a timeout, on purpose
+       start_bad_config(backend, rank, world_size)  # fails after a timeout, on purpose 
+^^^^^^^^^^^^^^ ^ ^ ^ ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^  File "/kaggle/working/gpu-benchmark-lab/train.py", line 174, in start_bad_config
+^^^^^^^^^^^^^^
+  File "/kaggle/working/gpu-benchmark-lab/train.py", line 174, in start_bad_config
+    dist.init_process_group(backend=backend, rank=rank, world_size=wrong_world_size,
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/c10d_logger.py", line 83, in wrapper
+    dist.init_process_group(backend=backend, rank=rank, world_size=wrong_world_size,
+    return func(*args, **kwargs)  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/c10d_logger.py", line 83, in wrapper
+
+           ^^^^^^^^^^^    ^return func(*args, **kwargs)^
+^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/c10d_logger.py", line 97, in wrapper
+           ^^^^^^^^^^^^^^^    ^func_return = func(*args, **kwargs)^
+^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/c10d_logger.py", line 97, in wrapper
+                  ^^^^^^^^    ^func_return = func(*args, **kwargs)^
+^^^^^^^^ ^ ^ ^ 
+      File "/usr/local/lib/python3.12/dist-packages/torch/distributed/distributed_c10d.py", line 1813, in init_process_group
+          ^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/distributed_c10d.py", line 1813, in init_process_group
+        default_pg, _ = _new_process_group_helper(default_pg, _ = _new_process_group_helper(
+
+                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/distributed_c10d.py", line 2043, in _new_process_group_helper
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/distributed_c10d.py", line 2043, in _new_process_group_helper
+    backend_class = ProcessGroupGloo(
+                    ^    ^backend_class = ProcessGroupGloo(^
+^^^^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ 
+  torch.distributed . DistStoreError  :  wait timeout after 15000ms, keys: /default_pg/0//cpu//0/2 
+ ^^^^^^^^^^^^^^^^^
+torch.distributed.DistStoreError: wait timeout after 15000ms, keys: /default_pg/0//cpu//0/2
+W1001 18:56:29.830000 624 torch/distributed/elastic/multiprocessing/api.py:1010] Sending process 629 closing signal SIGTERM
+E1001 18:56:29.896000 624 torch/distributed/elastic/multiprocessing/api.py:984] failed (exitcode: 1) local_rank: 0 (pid: 628) of binary: /usr/bin/python3
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/run.py", line 995, in <module>
+    main()
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 362, in wrapper
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/run.py", line 991, in main
+    run(args)
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/run.py", line 982, in run
+    elastic_launch(
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/launcher/api.py", line 170, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/launcher/api.py", line 317, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError: 
+============================================================
+train.py FAILED
+------------------------------------------------------------
+Failures:
+[1]:
+  time      : 2026-10-01_18:56:29
+  host      : b0493ad3926f
+  rank      : 1 (local_rank: 1)
+  exitcode  : 1 (pid: 629)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2026-10-01_18:56:29
+  host      : b0493ad3926f
+  rank      : 0 (local_rank: 0)
+  exitcode  : 1 (pid: 628)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================

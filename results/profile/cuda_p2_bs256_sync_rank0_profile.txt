@@ -1,0 +1,30 @@
+Profile of rank 0, 10 steps, device cuda:0, 2 process(es)
+Average step: 11.900 ms  |  forward 12.8%  backward 50.4%  optimizer 3.8%  other 32.9%
+All-reduce: {"event_names": ["c10d::allreduce_", "nccl:all_reduce", "ncclDevKernel_AllReduce_Sum_f32_RING_LL(ncclDevKernelArgsStorage<4096ul>)"], "work_measured_on": "gpu kernels", "calls_per_step": 2.0, "launch_ms_per_step": 0.23222630000000027, "work_ms_per_step_summed": 6.890611000000002, "busy_ms_per_step_during_backward": 3.445305500000001, "busy_pct_of_step": 28.951162232733473}
+
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg     Self CUDA   Self CUDA %    CUDA total  CUDA time avg    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+autograd::engine::evaluate_function: torch::autograd...         0.79%       1.033ms         3.74%       4.904ms      81.737us       0.000us         0.00%      36.495ms     608.256us            60  
+                                       c10d::allreduce_         0.50%     651.069us         1.77%       2.322ms     116.113us       0.000us         0.00%      34.453ms       1.723ms            20  
+                                     record_param_comms         0.92%       1.204ms         1.28%       1.671ms      83.560us      34.453ms        46.47%      34.453ms       1.723ms            20  
+ncclDevKernel_AllReduce_Sum_f32_RING_LL(ncclDevKerne...         0.00%       0.000us         0.00%       0.000us       0.000us      34.453ms        46.47%      34.453ms       1.723ms            20  
+                                        nccl:all_reduce         0.00%       0.000us         0.00%       0.000us       0.000us      34.453ms        46.47%      34.453ms       1.723ms            20  
+                                          ProfilerStep*         1.41%       1.850ms        90.85%     119.004ms      11.900ms       0.000us         0.00%      21.820ms       2.182ms            10  
+    autograd::engine::evaluate_function: AddmmBackward0         0.36%     468.290us         2.88%       3.773ms     125.766us       0.000us         0.00%      19.760ms     658.673us            30  
+                                         AddmmBackward0         0.22%     282.534us         1.86%       2.435ms      81.181us       0.000us         0.00%      18.918ms     630.608us            30  
+                                               aten::mm         0.93%       1.213ms         1.31%       1.719ms      34.384us      18.918ms        25.52%      18.918ms     378.365us            50  
+                                          ProfilerStep*         0.00%       0.000us         0.00%       0.000us       0.000us      18.767ms        25.31%      18.767ms       1.877ms            10  
+                                                forward         1.46%       1.914ms        11.67%      15.290ms       1.529ms       0.000us         0.00%      13.086ms       1.309ms            10  
+                        DistributedDataParallel.forward         1.52%       1.987ms         3.63%       4.760ms     476.007us       0.000us         0.00%      12.627ms       1.263ms            10  
+                        DistributedDataParallel.forward         0.00%       0.000us         0.00%       0.000us       0.000us      11.897ms        16.05%      11.897ms       1.190ms            10  
+                                           aten::linear         0.07%      92.997us         1.55%       2.026ms      67.531us       0.000us         0.00%      11.547ms     384.891us            30  
+                                            aten::addmm         0.89%       1.166ms         1.27%       1.659ms      55.298us      11.547ms        15.57%      11.547ms     384.891us            30  
+                                  volta_sgemm_128x64_tn         0.00%       0.000us         0.00%       0.000us       0.000us       8.642ms        11.66%       8.642ms     864.221us            10  
+                                  volta_sgemm_128x64_nn         0.00%       0.000us         0.00%       0.000us       0.000us       7.872ms        10.62%       7.872ms     787.232us            10  
+                                  volta_sgemm_128x64_nt         0.00%       0.000us         0.00%       0.000us       0.000us       7.796ms        10.51%       7.796ms     779.620us            10  
+                                         cudaEventQuery         0.10%     125.307us         0.10%     130.970us       1.310us       4.388ms         5.92%       4.388ms      43.884us           100  
+enumerate(DataLoader)#_SingleProcessDataLoaderIter._...        10.34%      13.547ms        24.88%      32.592ms       3.259ms       0.000us         0.00%       4.371ms     437.056us            10  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 130.988ms
+Self CUDA time total: 74.145ms

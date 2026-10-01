@@ -1,0 +1,63 @@
+/usr/bin/python3 -m torch.distributed.run --nnodes=1 --nproc_per_node=2 --master_addr=127.0.0.1 --master_port=42389 train.py --device cuda --steps 300 --batch-size 256 --sync-mode sync --out results/20261001-185440-failure-demo/bad-batch.json --failure-mode bad-batch
+
+[W1001 18:55:39.946806375 socket.cpp:207] [c10d] The hostname of the client socket cannot be retrieved. err=-3
+[W1001 18:55:49.273710489 socket.cpp:207] [c10d] The hostname of the client socket cannot be retrieved. err=-3
+[W1001 18:55:49.279950575 socket.cpp:207] [c10d] The hostname of the client socket cannot be retrieved. err=-3
+Processes: 2  |  Device: cuda:0  |  Backend: nccl  |  CPU threads per process: 2  |  Sync mode: sync
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/kaggle/working/gpu-benchmark-lab/train.py", line 441, in <module>
+[rank0]:     main()
+[rank0]:   File "/kaggle/working/gpu-benchmark-lab/train.py", line 355, in main
+[rank0]:     train_step(step, *next(batches))
+[rank0]:   File "/kaggle/working/gpu-benchmark-lab/train.py", line 333, in train_step
+[rank0]:     raise FloatingPointError(f"NaN loss detected on rank {rank} at step {step} "
+[rank0]: FloatingPointError: NaN loss detected on rank 0 at step 3 (loss=nan). Check the input batch for NaN/Inf values.
+[rank1]: Traceback (most recent call last):
+[rank1]:   File "/kaggle/working/gpu-benchmark-lab/train.py", line 441, in <module>
+[rank1]:     main()
+[rank1]:   File "/kaggle/working/gpu-benchmark-lab/train.py", line 355, in main
+[rank1]:     train_step(step, *next(batches))
+[rank1]:   File "/kaggle/working/gpu-benchmark-lab/train.py", line 333, in train_step
+[rank1]:     raise FloatingPointError(f"NaN loss detected on rank {rank} at step {step} "
+[rank1]: FloatingPointError: NaN loss detected on rank 1 at step 3 (loss=nan). Check the input batch for NaN/Inf values.
+[rank0]:[W1001 18:55:52.236877962 ProcessGroupNCCL.cpp:1553] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())
+E1001 18:55:53.576000 589 torch/distributed/elastic/multiprocessing/api.py:984] failed (exitcode: 1) local_rank: 0 (pid: 593) of binary: /usr/bin/python3
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/run.py", line 995, in <module>
+    main()
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 362, in wrapper
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/run.py", line 991, in main
+    run(args)
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/run.py", line 982, in run
+    elastic_launch(
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/launcher/api.py", line 170, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/launcher/api.py", line 317, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError: 
+============================================================
+train.py FAILED
+------------------------------------------------------------
+Failures:
+[1]:
+  time      : 2026-10-01_18:55:53
+  host      : b0493ad3926f
+  rank      : 1 (local_rank: 1)
+  exitcode  : 1 (pid: 594)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2026-10-01_18:55:53
+  host      : b0493ad3926f
+  rank      : 0 (local_rank: 0)
+  exitcode  : 1 (pid: 593)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================

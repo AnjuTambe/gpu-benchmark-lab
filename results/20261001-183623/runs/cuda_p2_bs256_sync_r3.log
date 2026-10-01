@@ -1,0 +1,16 @@
+/usr/bin/python3 -m torch.distributed.run --nnodes=1 --nproc_per_node=2 --master_addr=127.0.0.1 --master_port=55649 train.py --device cuda --steps 300 --batch-size 256 --sync-mode sync --out results/20261001-183623/runs/cuda_p2_bs256_sync_r3.json --failure-mode none
+
+[W1001 18:40:17.596970819 socket.cpp:207] [c10d] The hostname of the client socket cannot be retrieved. err=-3
+[W1001 18:40:28.835024164 socket.cpp:207] [c10d] The hostname of the client socket cannot be retrieved. err=-3
+[W1001 18:40:28.835149819 socket.cpp:207] [c10d] The hostname of the client socket cannot be retrieved. err=-3
+Processes: 2  |  Device: cuda:0  |  Backend: nccl  |  CPU threads per process: 2  |  Sync mode: sync
+/usr/local/lib/python3.12/dist-packages/torch/distributed/c10d_logger.py:83: UserWarning: barrier(): using the device under current context. You can specify `device_id` in `init_process_group` to mute this warning.
+  return func(*args, **kwargs)
+/usr/local/lib/python3.12/dist-packages/torch/distributed/c10d_logger.py:83: UserWarning: barrier(): using the device under current context. You can specify `device_id` in `init_process_group` to mute this warning.
+  return func(*args, **kwargs)
+Total time:       2.2362 s
+Samples per sec:  68687.4  (all processes combined)
+Time per step:    7.454 ms  (p50 7.249, p95 9.100)
+All-reduce:       3.166 ms for 5,267,466 values
+Final loss:       2.3017  (rank 0)
+Saved results to results/20261001-183623/runs/cuda_p2_bs256_sync_r3.json

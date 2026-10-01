@@ -1,0 +1,30 @@
+Profile of rank 0, 10 steps, device cuda:0, 1 process(es)
+Average step: 7.653 ms  |  forward 17.9%  backward 33.2%  optimizer 5.3%  other 43.6%
+All-reduce: single process: no all-reduce
+
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg     Self CUDA   Self CUDA %    CUDA total  CUDA time avg    # of Calls  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+    autograd::engine::evaluate_function: AddmmBackward0         0.64%     526.066us         4.43%       3.670ms     122.346us       0.000us         0.00%      19.311ms     643.706us            30  
+                                         AddmmBackward0         0.29%     237.900us         2.81%       2.331ms      77.707us       0.000us         0.00%      18.704ms     623.479us            30  
+                                               aten::mm         1.38%       1.140ms         2.02%       1.669ms      33.383us      18.704ms        53.13%      18.704ms     374.087us            50  
+                                          ProfilerStep*         0.00%       0.000us         0.00%       0.000us       0.000us      16.354ms        46.46%      16.354ms       1.635ms            10  
+                                          ProfilerStep*         1.79%       1.481ms        92.40%      76.528ms       7.653ms       0.000us         0.00%      15.339ms       1.534ms            10  
+                                                forward         0.00%       0.000us         0.00%       0.000us       0.000us      12.104ms        34.38%      12.104ms       1.210ms            10  
+                                                forward         1.71%       1.418ms        16.52%      13.683ms       1.368ms       0.000us         0.00%      11.994ms       1.199ms            10  
+                                           aten::linear         0.10%      85.155us         2.57%       2.131ms      71.029us       0.000us         0.00%      11.553ms     385.113us            30  
+                                            aten::addmm         1.27%       1.052ms         1.88%       1.556ms      51.875us      11.553ms        32.82%      11.553ms     385.113us            30  
+                                  volta_sgemm_128x64_tn         0.00%       0.000us         0.00%       0.000us       0.000us       8.646ms        24.56%       8.646ms     864.611us            10  
+                                  volta_sgemm_128x64_nn         0.00%       0.000us         0.00%       0.000us       0.000us       7.872ms        22.36%       7.872ms     787.213us            10  
+                                  volta_sgemm_128x64_nt         0.00%       0.000us         0.00%       0.000us       0.000us       7.806ms        22.17%       7.806ms     780.560us            10  
+                                              optimizer         0.73%     602.889us         4.90%       4.059ms     405.923us       0.000us         0.00%       2.682ms     268.161us            10  
+                                Optimizer.step#SGD.step         1.08%     897.873us         1.61%       1.331ms     133.146us       0.000us         0.00%       2.682ms     268.161us            10  
+                                    aten::_foreach_add_         0.25%     207.516us         0.52%     433.587us      43.359us       2.682ms         7.62%       2.682ms     268.161us            10  
+void at::native::(anonymous namespace)::multi_tensor...         0.00%       0.000us         0.00%       0.000us       0.000us       2.682ms         7.62%       2.682ms     268.161us            10  
+                                Optimizer.step#SGD.step         0.00%       0.000us         0.00%       0.000us       0.000us       2.682ms         7.62%       2.682ms     268.161us            10  
+                                 volta_sgemm_128x128_tn         0.00%       0.000us         0.00%       0.000us       0.000us       2.520ms         7.16%       2.520ms     252.008us            10  
+                                 volta_sgemm_128x128_nt         0.00%       0.000us         0.00%       0.000us       0.000us       2.472ms         7.02%       2.472ms     247.169us            10  
+                                              aten::sum         0.60%     496.876us         0.88%     728.260us      24.275us     606.811us         1.72%     606.811us      20.227us            30  
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  
+Self CPU time total: 82.821ms
+Self CUDA time total: 35.203ms

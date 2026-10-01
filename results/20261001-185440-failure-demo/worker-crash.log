@@ -1,0 +1,47 @@
+/usr/bin/python3 -m torch.distributed.run --nnodes=1 --nproc_per_node=2 --master_addr=127.0.0.1 --master_port=49013 train.py --device cuda --steps 300 --batch-size 256 --sync-mode sync --out results/20261001-185440-failure-demo/worker-crash.json --failure-mode worker-crash
+
+[W1001 18:55:15.821086555 socket.cpp:207] [c10d] The hostname of the client socket cannot be retrieved. err=-3
+[W1001 18:55:25.158728034 socket.cpp:207] [c10d] The hostname of the client socket cannot be retrieved. err=-3
+[W1001 18:55:25.165036080 socket.cpp:207] [c10d] The hostname of the client socket cannot be retrieved. err=-3
+Processes: 2  |  Device: cuda:0  |  Backend: nccl  |  CPU threads per process: 2  |  Sync mode: sync
+W1001 18:55:28.447000 558 torch/distributed/elastic/multiprocessing/api.py:1010] Sending process 562 closing signal SIGTERM
+E1001 18:55:28.664000 558 torch/distributed/elastic/multiprocessing/api.py:984] failed (exitcode: 1) local_rank: 1 (pid: 563) of binary: /usr/bin/python3
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/run.py", line 995, in <module>
+    main()
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 362, in wrapper
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/run.py", line 991, in main
+    run(args)
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/run.py", line 982, in run
+    elastic_launch(
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/launcher/api.py", line 170, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/launcher/api.py", line 317, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError: 
+============================================================
+train.py FAILED
+------------------------------------------------------------
+Failures:
+[1]:
+  time      : 2026-10-01_18:55:28
+  host      : b0493ad3926f
+  rank      : 0 (local_rank: 0)
+  exitcode  : -15 (pid: 562)
+  error_file: <N/A>
+  traceback : Signal 15 (SIGTERM) received by PID 562
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2026-10-01_18:55:28
+  host      : b0493ad3926f
+  rank      : 1 (local_rank: 1)
+  exitcode  : 1 (pid: 563)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================

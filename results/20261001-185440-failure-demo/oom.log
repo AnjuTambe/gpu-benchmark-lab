@@ -1,0 +1,72 @@
+/usr/bin/python3 -m torch.distributed.run --nnodes=1 --nproc_per_node=2 --master_addr=127.0.0.1 --master_port=35865 train.py --device cuda --steps 300 --batch-size 256 --sync-mode sync --out results/20261001-185440-failure-demo/oom.json --failure-mode oom
+
+[W1001 18:54:50.107852109 socket.cpp:207] [c10d] The hostname of the client socket cannot be retrieved. err=-3
+[W1001 18:55:00.403225264 socket.cpp:207] [c10d] The hostname of the client socket cannot be retrieved. err=-3
+[W1001 18:55:00.418676804 socket.cpp:207] [c10d] The hostname of the client socket cannot be retrieved. err=-3
+Processes: 2  |  Device: cuda:0  |  Backend: nccl  |  CPU threads per process: 2  |  Sync mode: sync
+[rank1]: Traceback (most recent call last):
+[rank1]:   File "/kaggle/working/gpu-benchmark-lab/train.py", line 441, in <module>
+[rank1]:     main()
+[rank1]:   File "/kaggle/working/gpu-benchmark-lab/train.py", line 355, in main
+[rank1]:     train_step(step, *next(batches))
+[rank1]:   File "/kaggle/working/gpu-benchmark-lab/train.py", line 317, in train_step
+[rank1]:     inputs = inject_failure(args.failure_mode, step, rank, world_size, device, inputs)
+[rank1]:              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank1]:   File "/kaggle/working/gpu-benchmark-lab/train.py", line 190, in inject_failure
+[rank1]:     torch.empty(huge, dtype=torch.uint8, device=device)  # raises a real CUDA OOM
+[rank1]:     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank1]: torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 1048576.00 GiB. GPU 1 has a total capacity of 14.56 GiB of which 14.24 GiB is free. Including non-PyTorch memory, this process has 322.00 MiB memory in use. Of the allocated memory 78.04 MiB is allocated by PyTorch, and 23.96 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/kaggle/working/gpu-benchmark-lab/train.py", line 441, in <module>
+[rank0]:     main()
+[rank0]:   File "/kaggle/working/gpu-benchmark-lab/train.py", line 355, in main
+[rank0]:     train_step(step, *next(batches))
+[rank0]:   File "/kaggle/working/gpu-benchmark-lab/train.py", line 317, in train_step
+[rank0]:     inputs = inject_failure(args.failure_mode, step, rank, world_size, device, inputs)
+[rank0]:              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/kaggle/working/gpu-benchmark-lab/train.py", line 190, in inject_failure
+[rank0]:     torch.empty(huge, dtype=torch.uint8, device=device)  # raises a real CUDA OOM
+[rank0]:     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]: torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 1048576.00 GiB. GPU 0 has a total capacity of 14.56 GiB of which 14.24 GiB is free. Including non-PyTorch memory, this process has 322.00 MiB memory in use. Of the allocated memory 78.04 MiB is allocated by PyTorch, and 23.96 MiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)
+[rank0]:[W1001 18:55:03.473421457 ProcessGroupNCCL.cpp:1553] Warning: WARNING: destroy_process_group() was not called before program exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function operator())
+W1001 18:55:04.738000 523 torch/distributed/elastic/multiprocessing/api.py:1010] Sending process 527 closing signal SIGTERM
+E1001 18:55:04.853000 523 torch/distributed/elastic/multiprocessing/api.py:984] failed (exitcode: 1) local_rank: 1 (pid: 528) of binary: /usr/bin/python3
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/run.py", line 995, in <module>
+    main()
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 362, in wrapper
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/run.py", line 991, in main
+    run(args)
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/run.py", line 982, in run
+    elastic_launch(
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/launcher/api.py", line 170, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/dist-packages/torch/distributed/launcher/api.py", line 317, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError: 
+============================================================
+train.py FAILED
+------------------------------------------------------------
+Failures:
+[1]:
+  time      : 2026-10-01_18:55:04
+  host      : b0493ad3926f
+  rank      : 0 (local_rank: 0)
+  exitcode  : 1 (pid: 527)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2026-10-01_18:55:04
+  host      : b0493ad3926f
+  rank      : 1 (local_rank: 1)
+  exitcode  : 1 (pid: 528)
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================

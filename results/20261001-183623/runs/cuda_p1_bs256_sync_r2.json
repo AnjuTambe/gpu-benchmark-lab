@@ -1,0 +1,28 @@
+{
+  "device": "cuda:0",
+  "world_size": 1,
+  "backend": null,
+  "sync_mode": "sync",
+  "cpu_threads_per_process": 2,
+  "torch_version": "2.10.0+cu128",
+  "platform": "Linux-6.18.48+-x86_64-with-glibc2.35",
+  "hardware": {
+    "system": "Linux-x86_64",
+    "cpu_name": "Intel(R) Xeon(R) CPU @ 2.00GHz",
+    "gpu_name": "Tesla T4",
+    "gpu_count": 2,
+    "torch_version": "2.10.0+cu128",
+    "cuda_version": "12.8"
+  },
+  "batch_size_per_process": 256,
+  "timed_steps": 300,
+  "total_time_sec": 1.2371496110000635,
+  "samples_per_sec": 62078.183040382544,
+  "time_per_step_ms": 4.123832036666878,
+  "step_p50_ms": 3.817577999996047,
+  "step_p95_ms": 5.5019132499637635,
+  "grad_values": 5267466,
+  "comm_ms_per_allreduce": null,
+  "final_loss_rank0": 2.311685085296631,
+  "profile": null
+}

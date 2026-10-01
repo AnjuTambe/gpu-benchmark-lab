@@ -1,0 +1,52 @@
+{
+  "device": "cuda:0",
+  "world_size": 2,
+  "backend": "nccl",
+  "sync_mode": "sync",
+  "cpu_threads_per_process": 2,
+  "torch_version": "2.10.0+cu128",
+  "platform": "Linux-6.18.48+-x86_64-with-glibc2.35",
+  "hardware": {
+    "system": "Linux-x86_64",
+    "cpu_name": "Intel(R) Xeon(R) CPU @ 2.00GHz",
+    "gpu_name": "Tesla T4",
+    "gpu_count": 2,
+    "torch_version": "2.10.0+cu128",
+    "cuda_version": "12.8"
+  },
+  "batch_size_per_process": 256,
+  "timed_steps": 300,
+  "total_time_sec": 2.3770604500000445,
+  "samples_per_sec": 64617.62468009475,
+  "time_per_step_ms": 7.923534833333481,
+  "step_p50_ms": 7.6106039999785935,
+  "step_p95_ms": 9.451008749931589,
+  "grad_values": 5267466,
+  "comm_ms_per_allreduce": 3.1422592999979315,
+  "final_loss_rank0": 2.3017287254333496,
+  "profile": {
+    "rank": 0,
+    "profiled_steps": 10,
+    "step_ms_avg": 11.900404799999999,
+    "forward_pct": 12.84849906954426,
+    "backward_pct": 50.43391465137387,
+    "optimizer_pct": 3.777151345305496,
+    "other_pct": 32.94043493377637,
+    "allreduce": {
+      "event_names": [
+        "c10d::allreduce_",
+        "nccl:all_reduce",
+        "ncclDevKernel_AllReduce_Sum_f32_RING_LL(ncclDevKernelArgsStorage<4096ul>)"
+      ],
+      "work_measured_on": "gpu kernels",
+      "calls_per_step": 2.0,
+      "launch_ms_per_step": 0.23222630000000027,
+      "work_ms_per_step_summed": 6.890611000000002,
+      "busy_ms_per_step_during_backward": 3.445305500000001,
+      "busy_pct_of_step": 28.951162232733473
+    },
+    "allreduce_note": "busy_ms_per_step_during_backward = wall time while at least one all-reduce ran inside backward; it overlaps with backward compute, so it is not simply added to the step time",
+    "trace_file": "results/profile/cuda_p2_bs256_sync_rank0_trace.json",
+    "summary_file": "results/profile/cuda_p2_bs256_sync_rank0_profile.txt"
+  }
+}

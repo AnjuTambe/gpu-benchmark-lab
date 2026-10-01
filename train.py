@@ -10,6 +10,8 @@ Options:
   --steps N                      number of timed steps (default: 300)
   --batch-size N                 samples per step, per process (default: 256)
   --out PATH                     where to save the JSON result
+  --failure-mode {none,oom,worker-crash,bad-batch,bad-config}
+                                 break the run on purpose (default: none), see inject_failure()
   --sync-mode {sync,no_sync,no_ddp}
                                  sync:    normal DDP, gradients all-reduced every step (default)
                                  no_sync: DDP wrapper, but gradients are never all-reduced
@@ -33,6 +35,7 @@ import os
 import platform
 import statistics
 import time
+from datetime import timedelta
 
 import torch
 import torch.distributed as dist
@@ -50,6 +53,8 @@ WARMUP_STEPS = 5     # untimed steps first, so one-time setup cost isn't measure
 COMM_WARMUP = 5      # untimed all-reduce calls before the communication test
 COMM_RUNS = 50       # timed all-reduce calls in the communication test
 RESULTS_DIR = "results"
+FAIL_AT_STEP = 3              # --failure-mode oom/worker-crash/bad-batch trigger at this step
+BAD_CONFIG_TIMEOUT_SEC = 15   # --failure-mode bad-config gives up connecting after this long
 
 
 def parse_args():
@@ -64,6 +69,9 @@ def parse_args():
                         help=f"samples per step, per process (default: {BATCH_SIZE})")
     parser.add_argument("--out", default=None,
                         help="where to save the JSON result (default: results/<device>_p<N>_bs<B>_<mode>.json)")
+    parser.add_argument("--failure-mode", default="none",
+                        choices=["none", "oom", "worker-crash", "bad-batch", "bad-config"],
+                        help="break the run on purpose to test failure analysis (default: none)")
     return parser.parse_args()
 
 
@@ -137,6 +145,51 @@ def time_allreduce(num_values, device, world_size):
     return (time.perf_counter() - start) / COMM_RUNS * 1000
 
 
+def start_bad_config(backend, rank, world_size):
+    """
+    --failure-mode bad-config: join the process group claiming one more process
+    than was actually started. The missing process never arrives, so connecting
+    fails after BAD_CONFIG_TIMEOUT_SEC instead of hanging forever.
+    """
+    os.environ.setdefault("MASTER_ADDR", "127.0.0.1")  # needed when run without torchrun
+    os.environ.setdefault("MASTER_PORT", "29500")
+    wrong_world_size = world_size + 1
+    print(f"[failure-mode bad-config] rank {rank}: joining with world_size={wrong_world_size}, "
+          f"but only {world_size} process(es) were started", flush=True)
+    dist.init_process_group(backend=backend, rank=rank, world_size=wrong_world_size,
+                            timeout=timedelta(seconds=BAD_CONFIG_TIMEOUT_SEC))
+
+
+def inject_failure(mode, step, rank, world_size, device, inputs):
+    """
+    Break the run on purpose at step FAIL_AT_STEP. Returns the (maybe changed) inputs.
+      oom:          a real CUDA out-of-memory error on CUDA; a simulated one on CPU/MPS
+      worker-crash: one process exits abruptly (rank 1, or rank 0 with 1 process)
+      bad-batch:    the batch gets NaN values; the NaN-loss check in train_step stops the run
+    """
+    if mode == "none" or step != FAIL_AT_STEP:
+        return inputs
+    if mode == "oom":
+        huge = 1 << 50  # 1 PiB, far more memory than any machine has
+        if device.type == "cuda":
+            torch.empty(huge, dtype=torch.uint8, device=device)  # raises a real CUDA OOM
+        elif device.type == "mps":
+            raise RuntimeError(f"[simulated by --failure-mode oom] MPS backend out of memory. "
+                               f"Tried to allocate {huge} bytes on private pool.")
+        else:
+            raise RuntimeError(f"[simulated by --failure-mode oom] DefaultCPUAllocator: can't allocate "
+                               f"memory: you tried to allocate {huge} bytes. Error code 12 "
+                               f"(Cannot allocate memory)")
+    if mode == "worker-crash":
+        crash_rank = 1 if world_size > 1 else 0
+        if rank == crash_rank:
+            os._exit(1)  # exit immediately: no Python traceback, no cleanup, like a real crash
+    if mode == "bad-batch":
+        inputs = inputs.clone()
+        inputs[0] = float("nan")  # one sample full of NaN is enough to make the loss NaN
+    return inputs
+
+
 def main():
     args = parse_args()
     rank, local_rank, world_size = read_torchrun_env()
@@ -145,7 +198,10 @@ def main():
 
     # With several processes, start DDP. The backend must match the device.
     backend = None
-    if world_size > 1:
+    if args.failure_mode == "bad-config":
+        backend = "nccl" if device.type == "cuda" else "gloo"
+        start_bad_config(backend, rank, world_size)  # fails after a timeout, on purpose
+    elif world_size > 1:
         backend = "nccl" if device.type == "cuda" else "gloo"
         dist.init_process_group(backend=backend)
 
@@ -192,8 +248,9 @@ def main():
     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=False)
     loader = DataLoader(dataset, batch_size=args.batch_size, sampler=sampler)
 
-    def train_step(inputs, labels):
+    def train_step(step, inputs, labels):
         inputs, labels = inputs.to(device), labels.to(device)
+        inputs = inject_failure(args.failure_mode, step, rank, world_size, device, inputs)
         optimizer.zero_grad()
         # --sync-mode no_sync: DDP's no_sync() skips the gradient all-reduce in backward().
         if use_ddp and args.sync_mode == "no_sync":
@@ -202,6 +259,10 @@ def main():
             grad_sync = contextlib.nullcontext()
         with grad_sync:
             loss = loss_fn(model(inputs), labels)
+            # Stop with a clear error instead of silently training on garbage.
+            if not torch.isfinite(loss):
+                raise FloatingPointError(f"NaN loss detected on rank {rank} at step {step} "
+                                         f"(loss={loss.item()}). Check the input batch for NaN/Inf values.")
             loss.backward()  # with DDP (sync mode), gradients are shared between processes here
         optimizer.step()
         return loss
@@ -209,16 +270,16 @@ def main():
     batches = iter(loader)
 
     # Warm-up: not timed.
-    for _ in range(WARMUP_STEPS):
-        train_step(*next(batches))
+    for step in range(WARMUP_STEPS):
+        train_step(step, *next(batches))
     sync(device, world_size)
 
     # Timed run. We also time every step on its own to get p50/p95 latency.
     step_times_ms = []
     start = time.perf_counter()
-    for _ in range(args.steps):
+    for step in range(WARMUP_STEPS, WARMUP_STEPS + args.steps):
         step_start = time.perf_counter()
-        loss = train_step(*next(batches))
+        loss = train_step(step, *next(batches))
         sync_device(device)  # make sure this step's GPU work is done before reading the clock
         step_times_ms.append((time.perf_counter() - step_start) * 1000)
     sync(device, world_size)

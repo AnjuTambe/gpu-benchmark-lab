@@ -1,0 +1,79 @@
+/Users/anjali/gpu-benchmark-lab/.venv/bin/python -m torch.distributed.run --nnodes=1 --nproc_per_node=2 --master_addr=127.0.0.1 --master_port=56767 train.py --device cpu --steps 300 --batch-size 256 --sync-mode sync --out results/20261001-083752-failure-demo/bad-batch.json --failure-mode bad-batch
+
+W1001 08:39:25.068000 61456 .venv/lib/python3.13/site-packages/torch/distributed/elastic/multiprocessing/redirects.py:35] NOTE: Redirects are currently not supported in MacOs.
+Processes: 2  |  Device: cpu  |  Backend: gloo  |  CPU threads per process: 2  |  Sync mode: sync
+[rank1]: Traceback (most recent call last):
+[rank1]:   File "/Users/anjali/gpu-benchmark-lab/train.py", line 335, in <module>
+[rank1]:     main()
+[rank1]:     ~~~~^^
+[rank1]:   File "/Users/anjali/gpu-benchmark-lab/train.py", line 274, in main
+[rank1]:     train_step(step, *next(batches))
+[rank1]:     ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+[rank1]:   File "/Users/anjali/gpu-benchmark-lab/train.py", line 264, in train_step
+[rank1]:     raise FloatingPointError(f"NaN loss detected on rank {rank} at step {step} "
+[rank1]:                              f"(loss={loss.item()}). Check the input batch for NaN/Inf values.")
+[rank1]: FloatingPointError: NaN loss detected on rank 1 at step 3 (loss=nan). Check the input batch for NaN/Inf values.
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "/Users/anjali/gpu-benchmark-lab/train.py", line 335, in <module>
+[rank0]:     main()
+[rank0]:     ~~~~^^
+[rank0]:   File "/Users/anjali/gpu-benchmark-lab/train.py", line 274, in main
+[rank0]:     train_step(step, *next(batches))
+[rank0]:     ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+[rank0]:   File "/Users/anjali/gpu-benchmark-lab/train.py", line 264, in train_step
+[rank0]:     raise FloatingPointError(f"NaN loss detected on rank {rank} at step {step} "
+[rank0]:                              f"(loss={loss.item()}). Check the input batch for NaN/Inf values.")
+[rank0]: FloatingPointError: NaN loss detected on rank 0 at step 3 (loss=nan). Check the input batch for NaN/Inf values.
+E1001 08:39:45.232000 61456 .venv/lib/python3.13/site-packages/torch/distributed/elastic/multiprocessing/api.py:1002] failed (exitcode: 1) local_rank: 0 (pid: 61462) of binary: /Users/anjali/gpu-benchmark-lab/.venv/bin/python
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/anjali/gpu-benchmark-lab/.venv/lib/python3.13/site-packages/torch/distributed/run.py", line 1142, in <module>
+    main()
+    ~~~~^^
+  File "/Users/anjali/gpu-benchmark-lab/.venv/lib/python3.13/site-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 380, in wrapper
+    return f(*args, **kwargs)
+  File "/Users/anjali/gpu-benchmark-lab/.venv/lib/python3.13/site-packages/torch/distributed/run.py", line 1138, in main
+    run(args)
+    ~~~^^^^^^
+  File "/Users/anjali/gpu-benchmark-lab/.venv/lib/python3.13/site-packages/torch/distributed/run.py", line 1129, in run
+    elastic_launch(
+    ~~~~~~~~~~~~~~~
+        config=config,
+        ~~~~~~~~~~~~~~
+        entrypoint=cmd,
+        ~~~~~~~~~~~~~~~
+    )(*cmd_args)
+    ~^^^^^^^^^^^
+  File "/Users/anjali/gpu-benchmark-lab/.venv/lib/python3.13/site-packages/torch/distributed/launcher/api.py", line 197, in __call__
+    return launch_agent(
+        self._config,
+    ...<2 lines>...
+        health_check_server=self._health_check_server,
+    )
+  File "/Users/anjali/gpu-benchmark-lab/.venv/lib/python3.13/site-packages/torch/distributed/launcher/api.py", line 386, in launch_agent
+    raise ChildFailedError(
+    ...<2 lines>...
+    )
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError: 
+============================================================
+train.py FAILED
+------------------------------------------------------------
+Failures:
+[1]:
+  time      : 2026-10-01_08:39:45
+  host      : Anjalis-MacBook-Air.local
+  rank      : 1 (local_rank: 1)
+  exitcode  : 1 (pid: 61463) 
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2026-10-01_08:39:45
+  host      : Anjalis-MacBook-Air.local
+  rank      : 0 (local_rank: 0)
+  exitcode  : 1 (pid: 61462) 
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================

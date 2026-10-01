@@ -7,6 +7,9 @@ Example:
 For every combination of (procs, batch size, sync mode) it runs train.py through
 torchrun --repeats times, saves every run in a new folder results/<timestamp>/,
 and writes results.csv there with one row per combination (median of the repeats).
+When a run fails, analyzer.py classifies the failure and its type goes in the failure_type column.
+
+  python benchmark.py --failure-demo    runs each train.py --failure-mode once and explains it
 """
 
 import argparse
@@ -23,8 +26,11 @@ from datetime import datetime
 
 import torch
 
+from analyzer import classify, format_report
+
 CSV_COLUMNS = ["device", "procs", "batch_size", "sync_mode", "samples_per_sec", "step_p50_ms",
-               "step_p95_ms", "allreduce_ms", "scaling_efficiency", "status"]
+               "step_p95_ms", "allreduce_ms", "scaling_efficiency", "status", "failure_type"]
+FAILURE_MODES = ["oom", "worker-crash", "bad-batch", "bad-config"]
 
 
 def int_list(text):
@@ -44,11 +50,16 @@ def parse_args():
     parser.add_argument("--device", choices=["auto", "cpu", "mps", "cuda"], default="auto")
     parser.add_argument("--steps", type=int, default=300, help="timed steps per run (default: 300)")
     parser.add_argument("--threads", type=int, default=2, help="OMP_NUM_THREADS per process (default: 2)")
-    parser.add_argument("--timeout", type=int, default=120, help="seconds before a run counts as failed (default: 120)")
+    parser.add_argument("--timeout", type=int, default=None,
+                        help="seconds before a run counts as failed (default: 120, or 90 with --failure-demo)")
+    parser.add_argument("--failure-demo", action="store_true",
+                        help="run each failure mode once and print the analyzer's explanation")
     args = parser.parse_args()
     for mode in args.sync_modes:
         if mode not in ("sync", "no_sync", "no_ddp"):
             parser.error(f"unknown sync mode: {mode}")
+    if args.timeout is None:
+        args.timeout = 90 if args.failure_demo else 120
     return args
 
 
@@ -85,8 +96,11 @@ def free_port():
         return s.getsockname()[1]
 
 
-def run_once(args, device, procs, batch_size, sync_mode, out_json, log_path):
-    """Run train.py once through torchrun. Returns (result dict or None, status text)."""
+def run_once(args, device, procs, batch_size, sync_mode, out_json, log_path, failure_mode="none"):
+    """
+    Run train.py once through torchrun.
+    Returns (result dict or None, status text, failure analysis dict or None).
+    """
     cmd = [
         sys.executable, "-m", "torch.distributed.run",  # same as `torchrun`, using this venv's Python
         "--nnodes=1", f"--nproc_per_node={procs}",
@@ -94,7 +108,7 @@ def run_once(args, device, procs, batch_size, sync_mode, out_json, log_path):
         "train.py",
         "--device", device, "--steps", str(args.steps),
         "--batch-size", str(batch_size), "--sync-mode", sync_mode,
-        "--out", out_json,
+        "--out", out_json, "--failure-mode", failure_mode,
     ]
     env = dict(os.environ, OMP_NUM_THREADS=str(args.threads))
     if platform.system() == "Darwin":
@@ -106,19 +120,22 @@ def run_once(args, device, procs, batch_size, sync_mode, out_json, log_path):
         log.write(" ".join(cmd) + "\n\n")
         log.flush()
         proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=env, start_new_session=True)
+        timed_out = False
         try:
             code = proc.wait(timeout=args.timeout)
         except subprocess.TimeoutExpired:
             os.killpg(proc.pid, signal.SIGKILL)
             proc.wait()
-            return None, f"timeout after {args.timeout}s"
+            code, timed_out = None, True
 
-    if code != 0:
-        return None, f"exit code {code}"
-    if not os.path.exists(out_json):
-        return None, "no result file"
+    if timed_out or code != 0 or not os.path.exists(out_json):
+        status = (f"timeout after {args.timeout}s" if timed_out
+                  else f"exit code {code}" if code != 0 else "no result file")
+        with open(log_path) as f:
+            failure = classify(code, f.read(), timed_out)
+        return None, status, failure
     with open(out_json) as f:
-        return json.load(f), "ok"
+        return json.load(f), "ok", None
 
 
 def median_or_none(values):
@@ -130,9 +147,32 @@ def fmt(value, digits):
     return "" if value is None else f"{value:.{digits}f}"
 
 
+def failure_demo(args, device):
+    """Run each train.py --failure-mode once and print what the analyzer says about it."""
+    procs = 2 if skip_reason(device, 2) is None else 1  # 2 processes if this machine can, so ranks matter
+    out_dir = os.path.join("results", datetime.now().strftime("%Y%m%d-%H%M%S") + "-failure-demo")
+    os.makedirs(out_dir, exist_ok=True)
+    print(f"Failure demo  |  Device: {device}  |  processes: {procs}  |  timeout: {args.timeout}s")
+    print(f"Saving logs to {out_dir}/")
+
+    for mode in FAILURE_MODES:
+        base = os.path.join(out_dir, mode)
+        print(f"\n=== --failure-mode {mode} ===")
+        result, status, failure = run_once(args, device, procs, args.batch_sizes[0], "sync",
+                                           base + ".json", base + ".log", failure_mode=mode)
+        if result:
+            print(f"Run did NOT fail (expected it to). Log: {base}.log")
+            continue
+        print(f"Run status: {status}  |  log: {base}.log")
+        print(format_report(failure))
+
+
 def main():
     args = parse_args()
     device = resolve_device(args.device, args.procs)
+    if args.failure_demo:
+        failure_demo(args, device)
+        return
     out_dir = os.path.join("results", datetime.now().strftime("%Y%m%d-%H%M%S"))
     runs_dir = os.path.join(out_dir, "runs")
     os.makedirs(runs_dir, exist_ok=True)
@@ -154,18 +194,20 @@ def main():
                     rows.append({**row, "status": f"skipped: {reason}"})
                     continue
 
-                results, failures = [], []
+                results, failures, failure_types = [], [], []
                 for r in range(1, args.repeats + 1):
                     base = os.path.join(runs_dir, f"{name}_r{r}")
-                    result, status = run_once(args, device, procs, batch_size, sync_mode,
-                                              base + ".json", base + ".log")
+                    result, status, failure = run_once(args, device, procs, batch_size, sync_mode,
+                                                       base + ".json", base + ".log")
                     if result:
                         results.append(result)
                         print(f"  {name} run {r}: {result['samples_per_sec']:.1f} samples/s, "
                               f"p50 {result['step_p50_ms']:.3f} ms")
                     else:
                         failures.append(status)
-                        print(f"  {name} run {r}: FAILED ({status}), see {base}.log")
+                        if failure["type"] not in failure_types:
+                            failure_types.append(failure["type"])
+                        print(f"  {name} run {r}: FAILED ({status}) -> {failure['type']}, see {base}.log")
 
                 # Median of the successful repeats. Failed repeats are counted in the status.
                 row["samples_per_sec"] = median_or_none([x["samples_per_sec"] for x in results])
@@ -178,6 +220,7 @@ def main():
                     row["status"] = f"partial: {len(results)}/{args.repeats} ok ({'; '.join(failures)})"
                 else:
                     row["status"] = f"failed: {'; '.join(failures)}"
+                row["failure_type"] = ";".join(failure_types) or None
                 rows.append(row)
 
     # scaling_efficiency = samples/sec / (procs x 1-process samples/sec), same device, batch size, sync mode.
@@ -198,12 +241,12 @@ def main():
 
     # Clean table at the end.
     header = ["device", "procs", "batch", "sync_mode", "samples/s", "p50 ms", "p95 ms",
-              "allreduce ms", "scaling", "status"]
+              "allreduce ms", "scaling", "failure", "status"]
     table = [[r["device"], str(r["procs"]), str(r["batch_size"]), r["sync_mode"],
               fmt(r.get("samples_per_sec"), 1), fmt(r.get("step_p50_ms"), 3), fmt(r.get("step_p95_ms"), 3),
               fmt(r.get("allreduce_ms"), 3),
               "" if r.get("scaling_efficiency") is None else f"{r['scaling_efficiency']:.1%}",
-              r["status"]] for r in rows]
+              r.get("failure_type") or "", r["status"]] for r in rows]
     widths = [max(len(h), *(len(t[i]) for t in table)) for i, h in enumerate(header)]
     print()
     print("  ".join(h.ljust(w) for h, w in zip(header, widths)))

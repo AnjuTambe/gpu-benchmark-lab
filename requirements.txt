@@ -1,3 +1,6 @@
 # PyTorch: runs on CPU everywhere; uses an NVIDIA GPU (CUDA) or Apple GPU (MPS) when one is available.
 torch>=2.5
 numpy
+
+# Tests (run with: pytest)
+pytest

@@ -1,0 +1,132 @@
+/Users/anjali/gpu-benchmark-lab/.venv/bin/python -m torch.distributed.run --nnodes=1 --nproc_per_node=2 --master_addr=127.0.0.1 --master_port=56794 train.py --device cpu --steps 300 --batch-size 256 --sync-mode sync --out results/20261001-083752-failure-demo/bad-config.json --failure-mode bad-config
+
+W1001 08:40:11.004000 61488 .venv/lib/python3.13/site-packages/torch/distributed/elastic/multiprocessing/redirects.py:35] NOTE: Redirects are currently not supported in MacOs.
+[failure-mode bad-config] rank 0: joining with world_size=3, but only 2 process(es) were started[failure-mode bad-config] rank 1: joining with world_size=3, but only 2 process(es) were started
+
+[W1001 08:40:36.526888000 socket.cpp:471] [c10d] waitForInput: poll for socket SocketImpl(fd=3, addr=[localhost]:56796, remote=[localhost]:56794) returned 0, likely a timeout
+[W1001 08:40:36.526890000 socket.cpp:471] [c10d] waitForInput: poll for socket SocketImpl(fd=3, addr=[localhost]:56797, remote=[localhost]:56794) returned 0, likely a timeout
+[W1001 08:40:36.530594000 socket.cpp:495] [c10d] waitForInput: socket SocketImpl(fd=3, addr=[localhost]:56796, remote=[localhost]:56794) timed out after 15000ms
+[W1001 08:40:36.530627000 socket.cpp:495] [c10d] waitForInput: socket SocketImpl(fd=3, addr=[localhost]:56797, remote=[localhost]:56794) timed out after 15000ms
+Traceback (most recent call last):
+Traceback (most recent call last):
+  File "/Users/anjali/gpu-benchmark-lab/train.py", line 335, in <module>
+    main()
+    ~~~~^^
+  File "/Users/anjali/gpu-benchmark-lab/train.py", line 335, in <module>
+    main()
+    ~~~~^^
+  File "/Users/anjali/gpu-benchmark-lab/train.py", line 203, in main
+    start_bad_config(backend, rank, world_size)  # fails after a timeout, on purpose
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/anjali/gpu-benchmark-lab/train.py", line 203, in main
+    start_bad_config(backend, rank, world_size)  # fails after a timeout, on purpose
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/anjali/gpu-benchmark-lab/train.py", line 159, in start_bad_config
+    dist.init_process_group(backend=backend, rank=rank, world_size=wrong_world_size,
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                            timeout=timedelta(seconds=BAD_CONFIG_TIMEOUT_SEC))
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/anjali/gpu-benchmark-lab/train.py", line 159, in start_bad_config
+    dist.init_process_group(backend=backend, rank=rank, world_size=wrong_world_size,
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                            timeout=timedelta(seconds=BAD_CONFIG_TIMEOUT_SEC))
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/anjali/gpu-benchmark-lab/.venv/lib/python3.13/site-packages/torch/distributed/c10d_logger.py", line 83, in wrapper
+    return func(*args, **kwargs)
+  File "/Users/anjali/gpu-benchmark-lab/.venv/lib/python3.13/site-packages/torch/distributed/c10d_logger.py", line 83, in wrapper
+    return func(*args, **kwargs)
+  File "/Users/anjali/gpu-benchmark-lab/.venv/lib/python3.13/site-packages/torch/distributed/c10d_logger.py", line 97, in wrapper
+    func_return = func(*args, **kwargs)
+  File "/Users/anjali/gpu-benchmark-lab/.venv/lib/python3.13/site-packages/torch/distributed/c10d_logger.py", line 97, in wrapper
+    func_return = func(*args, **kwargs)
+  File "/Users/anjali/gpu-benchmark-lab/.venv/lib/python3.13/site-packages/torch/distributed/distributed_c10d.py", line 2553, in init_process_group
+    default_pg, _ = _new_process_group_helper(
+                    ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        world_size,
+        ^^^^^^^^^^^
+    ...<9 lines>...
+        enable_reconfigure=enable_reconfigure,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/anjali/gpu-benchmark-lab/.venv/lib/python3.13/site-packages/torch/distributed/distributed_c10d.py", line 2553, in init_process_group
+    default_pg, _ = _new_process_group_helper(
+                    ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        world_size,
+        ^^^^^^^^^^^
+    ...<9 lines>...
+        enable_reconfigure=enable_reconfigure,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/anjali/gpu-benchmark-lab/.venv/lib/python3.13/site-packages/torch/distributed/distributed_c10d.py", line 2874, in _new_process_group_helper
+    backend_result = creator_fn(dist_backend_opts, backend_options)
+  File "/Users/anjali/gpu-benchmark-lab/.venv/lib/python3.13/site-packages/torch/distributed/distributed_c10d.py", line 2874, in _new_process_group_helper
+    backend_result = creator_fn(dist_backend_opts, backend_options)
+  File "/Users/anjali/gpu-benchmark-lab/.venv/lib/python3.13/site-packages/torch/distributed/distributed_c10d.py", line 669, in _create_gloo_process_group
+    backend_class = ProcessGroupGloo(
+        opts.store,
+    ...<4 lines>...
+        enable_reconfigure=opts.enable_reconfigure,
+    )
+  File "/Users/anjali/gpu-benchmark-lab/.venv/lib/python3.13/site-packages/torch/distributed/distributed_c10d.py", line 669, in _create_gloo_process_group
+    backend_class = ProcessGroupGloo(
+        opts.store,
+    ...<4 lines>...
+        enable_reconfigure=opts.enable_reconfigure,
+    )
+torch.distributed.DistStoreError: wait timeout after 15000ms, keys: /default_pg/0//cpu//0/2
+torch.distributed.DistStoreError: wait timeout after 15000ms, keys: /default_pg/0//cpu//0/2
+E1001 08:40:36.872000 61488 .venv/lib/python3.13/site-packages/torch/distributed/elastic/multiprocessing/api.py:1002] failed (exitcode: 1) local_rank: 0 (pid: 61490) of binary: /Users/anjali/gpu-benchmark-lab/.venv/bin/python
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/anjali/gpu-benchmark-lab/.venv/lib/python3.13/site-packages/torch/distributed/run.py", line 1142, in <module>
+    main()
+    ~~~~^^
+  File "/Users/anjali/gpu-benchmark-lab/.venv/lib/python3.13/site-packages/torch/distributed/elastic/multiprocessing/errors/__init__.py", line 380, in wrapper
+    return f(*args, **kwargs)
+  File "/Users/anjali/gpu-benchmark-lab/.venv/lib/python3.13/site-packages/torch/distributed/run.py", line 1138, in main
+    run(args)
+    ~~~^^^^^^
+  File "/Users/anjali/gpu-benchmark-lab/.venv/lib/python3.13/site-packages/torch/distributed/run.py", line 1129, in run
+    elastic_launch(
+    ~~~~~~~~~~~~~~~
+        config=config,
+        ~~~~~~~~~~~~~~
+        entrypoint=cmd,
+        ~~~~~~~~~~~~~~~
+    )(*cmd_args)
+    ~^^^^^^^^^^^
+  File "/Users/anjali/gpu-benchmark-lab/.venv/lib/python3.13/site-packages/torch/distributed/launcher/api.py", line 197, in __call__
+    return launch_agent(
+        self._config,
+    ...<2 lines>...
+        health_check_server=self._health_check_server,
+    )
+  File "/Users/anjali/gpu-benchmark-lab/.venv/lib/python3.13/site-packages/torch/distributed/launcher/api.py", line 386, in launch_agent
+    raise ChildFailedError(
+    ...<2 lines>...
+    )
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError: 
+============================================================
+train.py FAILED
+------------------------------------------------------------
+Failures:
+[1]:
+  time      : 2026-10-01_08:40:36
+  host      : Anjalis-MacBook-Air.local
+  rank      : 1 (local_rank: 1)
+  exitcode  : 1 (pid: 61491) 
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2026-10-01_08:40:36
+  host      : Anjalis-MacBook-Air.local
+  rank      : 0 (local_rank: 0)
+  exitcode  : 1 (pid: 61490) 
+  error_file: <N/A>
+  traceback : To enable traceback see: https://pytorch.org/docs/stable/elastic/errors.html
+============================================================

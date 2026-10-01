@@ -16,13 +16,15 @@ Device rules for --device auto:
 The DDP backend follows the device: "nccl" for CUDA, "gloo" for CPU.
 
 At the end, only rank 0 (the first process) prints the timing results and
-saves them to results.json.
+saves them to results/<device>_p<processes>_bs<batch>.json, for example
+results/cpu_p2_bs256.json.
 """
 
 import argparse
 import json
 import os
 import platform
+import statistics
 import time
 
 import torch
@@ -38,7 +40,9 @@ INPUT_SIZE = 512     # number of features in each fake sample
 HIDDEN_SIZE = 2048   # size of each hidden layer
 NUM_CLASSES = 10     # number of fake labels
 WARMUP_STEPS = 5     # untimed steps first, so one-time setup cost isn't measured
-RESULTS_FILE = "results.json"
+COMM_WARMUP = 5      # untimed all-reduce calls before the communication test
+COMM_RUNS = 50       # timed all-reduce calls in the communication test
+RESULTS_DIR = "results"
 
 
 def parse_args():
@@ -85,17 +89,39 @@ def pick_device(choice, local_rank, world_size):
     return torch.device("cpu")
 
 
-def sync(device, world_size):
-    """
-    GPUs run work in the background. Wait for them to finish so timing is accurate.
-    With several processes, also wait for every process to reach this point.
-    """
+def sync_device(device):
+    """GPUs run work in the background. Wait for them to finish so timing is accurate."""
     if device.type == "cuda":
         torch.cuda.synchronize(device)
     elif device.type == "mps":
         torch.mps.synchronize()
+
+
+def sync(device, world_size):
+    """Wait for the device, and with several processes also wait for every process."""
+    sync_device(device)
     if world_size > 1:
         dist.barrier()
+
+
+def time_allreduce(num_values, device, world_size):
+    """
+    Communication test: average time (ms) of one dist.all_reduce on a float32
+    tensor with num_values values, the same size as all the model's gradients.
+    Returns None in single-process mode, where there is nothing to communicate.
+    """
+    if world_size == 1:
+        return None
+    tensor = torch.ones(num_values, dtype=torch.float32, device=device)
+    for _ in range(COMM_WARMUP):
+        dist.all_reduce(tensor)
+    sync(device, world_size)
+
+    start = time.perf_counter()
+    for _ in range(COMM_RUNS):
+        dist.all_reduce(tensor)
+    sync_device(device)
+    return (time.perf_counter() - start) / COMM_RUNS * 1000
 
 
 def main():
@@ -125,6 +151,10 @@ def main():
         nn.ReLU(),
         nn.Linear(HIDDEN_SIZE, NUM_CLASSES),
     ).to(device)
+    num_grad_values = sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+    # Communication test, before training.
+    comm_ms = time_allreduce(num_grad_values, device, world_size)
 
     # With several processes, wrap the model in DDP so gradients are averaged across processes.
     if world_size > 1:
@@ -162,16 +192,21 @@ def main():
         train_step(*next(batches))
     sync(device, world_size)
 
-    # Timed run.
+    # Timed run. We also time every step on its own to get p50/p95 latency.
+    step_times_ms = []
     start = time.perf_counter()
     for _ in range(args.steps):
+        step_start = time.perf_counter()
         loss = train_step(*next(batches))
+        sync_device(device)  # make sure this step's GPU work is done before reading the clock
+        step_times_ms.append((time.perf_counter() - step_start) * 1000)
     sync(device, world_size)
     total_time = time.perf_counter() - start
 
     # All numbers below come from the measured run above.
     if is_main:
         total_samples = BATCH_SIZE * args.steps * world_size  # across all processes
+        percentiles = statistics.quantiles(step_times_ms, n=100)  # 99 cut points: p1..p99
         results = {
             "device": str(device),
             "world_size": world_size,
@@ -184,17 +219,29 @@ def main():
             "total_time_sec": total_time,
             "samples_per_sec": total_samples / total_time,
             "time_per_step_ms": (total_time / args.steps) * 1000,
+            "step_p50_ms": percentiles[49],  # measured on rank 0
+            "step_p95_ms": percentiles[94],  # measured on rank 0
+            "grad_values": num_grad_values,
+            "comm_ms_per_allreduce": comm_ms,
             "final_loss_rank0": loss.item(),
         }
 
         print(f"Total time:       {results['total_time_sec']:.4f} s")
         print(f"Samples per sec:  {results['samples_per_sec']:.1f}  (all processes combined)")
-        print(f"Time per step:    {results['time_per_step_ms']:.3f} ms")
+        print(f"Time per step:    {results['time_per_step_ms']:.3f} ms  "
+              f"(p50 {results['step_p50_ms']:.3f}, p95 {results['step_p95_ms']:.3f})")
+        if comm_ms is None:
+            print("All-reduce:       n/a (single process)")
+        else:
+            print(f"All-reduce:       {comm_ms:.3f} ms for {num_grad_values:,} values")
         print(f"Final loss:       {results['final_loss_rank0']:.4f}  (rank 0)")
 
-        with open(RESULTS_FILE, "w") as f:
+        # One file per setup, e.g. results/cpu_p2_bs256.json, so runs don't overwrite each other.
+        os.makedirs(RESULTS_DIR, exist_ok=True)
+        path = os.path.join(RESULTS_DIR, f"{device.type}_p{world_size}_bs{BATCH_SIZE}.json")
+        with open(path, "w") as f:
             json.dump(results, f, indent=2)
-        print(f"Saved results to {RESULTS_FILE}")
+        print(f"Saved results to {path}")
 
     if world_size > 1:
         dist.destroy_process_group()

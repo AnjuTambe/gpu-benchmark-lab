@@ -34,10 +34,11 @@ from datetime import datetime
 import torch
 
 from analyzer import classify, format_report
+from hardware import HARDWARE_COLUMNS, hardware_info
 from regression import compare, format_findings, gate_failures, load_csv
 
 CSV_COLUMNS = ["device", "procs", "batch_size", "sync_mode", "samples_per_sec", "step_p50_ms",
-               "step_p95_ms", "allreduce_ms", "scaling_efficiency", "status", "failure_type"]
+               "step_p95_ms", "allreduce_ms", "scaling_efficiency", "status", "failure_type"] + HARDWARE_COLUMNS
 FAILURE_MODES = ["oom", "worker-crash", "bad-batch", "bad-config"]
 
 
@@ -165,6 +166,7 @@ def failure_demo(args, device):
     out_dir = os.path.join("results", datetime.now().strftime("%Y%m%d-%H%M%S") + "-failure-demo")
     os.makedirs(out_dir, exist_ok=True)
     print(f"Failure demo  |  Device: {device}  |  processes: {procs}  |  timeout: {args.timeout}s")
+    print("Hardware: " + "  |  ".join(f"{k}: {v}" for k, v in hardware_info().items()))
     print(f"Saving logs to {out_dir}/")
 
     for mode in FAILURE_MODES:
@@ -189,15 +191,18 @@ def main():
     runs_dir = os.path.join(out_dir, "runs")
     os.makedirs(runs_dir, exist_ok=True)
 
+    hardware = hardware_info()  # same machine for every row; saved in results.csv
     print(f"Device: {device}  |  OMP_NUM_THREADS: {args.threads}  |  steps: {args.steps}  "
           f"|  repeats: {args.repeats}  |  timeout: {args.timeout}s")
+    print("Hardware: " + "  |  ".join(f"{k}: {v}" for k, v in hardware.items()))
     print(f"Saving to {out_dir}/\n")
 
     rows = []
     for sync_mode in args.sync_modes:
         for batch_size in args.batch_sizes:
             for procs in args.procs:
-                row = {"device": device, "procs": procs, "batch_size": batch_size, "sync_mode": sync_mode}
+                row = {"device": device, "procs": procs, "batch_size": batch_size, "sync_mode": sync_mode,
+                       **hardware}
                 name = f"{device}_p{procs}_bs{batch_size}_{sync_mode}"
 
                 reason = skip_reason(device, procs)

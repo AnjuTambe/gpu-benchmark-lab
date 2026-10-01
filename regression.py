@@ -6,12 +6,16 @@ and sync_mode. A row regresses when its samples_per_sec is more than
 tolerance_pct percent below the baseline. gate_failures() decides whether the
 whole comparison passes.
 
+Rows are only compared when both say which machine they ran on (system, cpu_name,
+gpu_name) and the machines match, so e.g. Mac and Kaggle results are never mixed.
+
 This file does not import torch, so it can be tested without running anything.
 """
 
 import csv
 
 KEY_COLUMNS = ("device", "procs", "batch_size", "sync_mode")
+MACHINE_COLUMNS = ("system", "cpu_name", "gpu_name")  # must match between a row and its baseline
 
 
 def load_csv(path):
@@ -35,6 +39,12 @@ def throughput(row):
     return float(value) if value else None
 
 
+def machine(row):
+    """The machine identity of a row, or None if the row has no hardware info."""
+    values = tuple((row.get(c) or "").strip() for c in MACHINE_COLUMNS)
+    return values if any(values) else None
+
+
 def compare(current_rows, baseline_rows, tolerance_pct):
     """
     Compare every current row with its baseline row.
@@ -46,6 +56,7 @@ def compare(current_rows, baseline_rows, tolerance_pct):
       "failed"       this run did not finish cleanly (status is not "ok"), so it can't be checked
       "skipped"      this config was skipped on this machine
       "no_baseline"  no usable baseline row for this config
+      "hardware_mismatch"  the baseline was measured on a different (or unknown) machine
     """
     baseline = {row_key(row): row for row in baseline_rows}
     findings = []
@@ -68,6 +79,13 @@ def compare(current_rows, baseline_rows, tolerance_pct):
         elif base is None:
             finding.update(outcome="no_baseline",
                            detail=f"baseline row has no throughput (baseline status: {base_row.get('status')})")
+        elif machine(row) is None or machine(base_row) is None:
+            finding.update(outcome="hardware_mismatch",
+                           detail="hardware unknown for " + ("this run" if machine(row) is None else "the baseline")
+                                  + "; re-create the baseline on this machine")
+        elif machine(row) != machine(base_row):
+            finding.update(outcome="hardware_mismatch",
+                           detail=f"this run: {' / '.join(machine(row))}; baseline: {' / '.join(machine(base_row))}")
         else:
             expected_min = base * (1 - tolerance_pct / 100)
             finding.update(expected_min=expected_min, change_pct=(actual - base) / base * 100,
@@ -92,14 +110,15 @@ def format_findings(findings, tolerance_pct):
                          f"({f['change_pct']:+.1f}% vs baseline {f['baseline']:.1f})")
         else:
             label = {"failed": "NOT CHECKED  (run failed)", "skipped": "NOT CHECKED  (skipped)",
-                     "no_baseline": "NOT CHECKED  (no baseline)"}[f["outcome"]]
+                     "no_baseline": "NOT CHECKED  (no baseline)",
+                     "hardware_mismatch": "NOT CHECKED  (different hardware)"}[f["outcome"]]
             lines.append(f"{label} {f['config']}: {f['detail']}")
 
     failures = gate_failures(findings)
     if failures:
         lines.append("GATE FAILED: " + "; ".join(failures))
     else:
-        unchecked = sum(f["outcome"] in ("skipped", "no_baseline") for f in findings)
+        unchecked = sum(f["outcome"] in ("skipped", "no_baseline", "hardware_mismatch") for f in findings)
         lines.append("No regression" + (f" ({unchecked} of {len(findings)} rows could not be checked, see above)"
                                          if unchecked else ""))
     return "\n".join(lines)
@@ -111,8 +130,9 @@ def gate_failures(findings):
       - any row regressed,
       - any row's run failed (a crash must not pass as "no regression"),
       - no row could be checked at all (nothing was actually compared).
-    Skipped rows (the machine cannot run that config) and rows without a
-    baseline are reported but do not fail the gate on their own.
+    Skipped rows (the machine cannot run that config), rows without a baseline and
+    rows whose baseline came from different hardware are reported but do not fail
+    the gate on their own.
     """
     reasons = []
     regressed = sum(f["outcome"] == "regression" for f in findings)

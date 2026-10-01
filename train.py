@@ -46,6 +46,8 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, TensorDataset
 from torch.utils.data.distributed import DistributedSampler
 
+from hardware import hardware_info
+
 # ---- Settings (big enough that one step takes a few ms on a laptop CPU) ----
 BATCH_SIZE = 256     # default samples per training step, per process (--batch-size)
 INPUT_SIZE = 512     # number of features in each fake sample
@@ -105,6 +107,9 @@ def pick_device(choice, local_rank, world_size):
     if choice == "cuda":
         if not torch.cuda.is_available():
             raise SystemExit("--device cuda was requested, but no NVIDIA GPU (CUDA) is available.")
+        if local_rank >= torch.cuda.device_count():
+            raise SystemExit(f"--device cuda: this process needs GPU {local_rank}, but only "
+                             f"{torch.cuda.device_count()} GPU(s) are available. Use fewer processes.")
         return torch.device(f"cuda:{local_rank}")  # one GPU per process
     if choice == "mps":
         if not torch.backends.mps.is_available():
@@ -156,6 +161,9 @@ def start_bad_config(backend, rank, world_size):
     --failure-mode bad-config: join the process group claiming one more process
     than was actually started. The missing process never arrives, so connecting
     fails after BAD_CONFIG_TIMEOUT_SEC instead of hanging forever.
+    Always uses gloo, even on CUDA: gloo connects all processes immediately, so the
+    mistake shows up as a clear timeout. NCCL connects lazily, so the same mistake
+    could instead hang later, inside the first collective.
     """
     os.environ.setdefault("MASTER_ADDR", "127.0.0.1")  # needed when run without torchrun
     os.environ.setdefault("MASTER_PORT", "29500")
@@ -226,6 +234,11 @@ def allreduce_during_backward(events):
     comm = [e for e in events if is_comm_event(e.name)]
     launches = [e for e in comm if e.name.startswith("c10d::")]
     work = [e for e in comm if not e.name.startswith("c10d::")]
+    # On CUDA (NCCL), the real work is the GPU kernel; the CPU-side 'nccl:all_reduce' only queues it.
+    # (Not yet tested on a GPU.)
+    gpu_work = [e for e in work if str(e.device_type).endswith("CUDA")]
+    if gpu_work:
+        work = gpu_work
 
     # Wall time during which at least one all-reduce was running inside a backward range.
     clipped = []
@@ -239,7 +252,7 @@ def allreduce_during_backward(events):
         "event_names": sorted({e.name for e in comm}),
         "calls_per_step": len(launches) / steps,
         "launch_ms_per_step": sum(e.cpu_time_total for e in launches) / steps / 1000,
-        "work_ms_per_step_summed": sum(e.cpu_time_total for e in work) / steps / 1000,
+        "work_ms_per_step_summed": sum(e.time_range.end - e.time_range.start for e in work) / steps / 1000,
         "busy_ms_per_step_during_backward": merged_length(clipped) / steps / 1000,
     }
 
@@ -248,7 +261,8 @@ def save_profile(prof, base, rank, device, world_size):
     """
     Save the profiler's summary table and chrome trace, and work out how the
     step time splits into forward / backward / optimizer. Returns a dict for results.
-    All numbers are CPU wall time of the recorded ranges, averaged over PROFILE_STEPS.
+    All numbers are wall time of the recorded ranges, averaged over PROFILE_STEPS
+    (on a GPU, each range waits for the GPU at its end, see train_step).
     """
     trace_file = f"{base}_rank{rank}_trace.json"
     summary_file = f"{base}_rank{rank}_profile.txt"
@@ -308,9 +322,12 @@ def main():
     is_main = rank == 0  # only rank 0 prints and saves
 
     # With several processes, start DDP. The backend must match the device.
+    # On CUDA, each process must use its own GPU before NCCL starts.
+    if device.type == "cuda":
+        torch.cuda.set_device(device)
     backend = None
     if args.failure_mode == "bad-config":
-        backend = "nccl" if device.type == "cuda" else "gloo"
+        backend = "gloo"
         start_bad_config(backend, rank, world_size)  # fails after a timeout, on purpose
     elif world_size > 1:
         backend = "nccl" if device.type == "cuda" else "gloo"
@@ -359,6 +376,8 @@ def main():
     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=False)
     loader = DataLoader(dataset, batch_size=args.batch_size, sampler=sampler)
 
+    profiling_now = [False]  # set to True only during the --profile steps
+
     def train_step(step, inputs, labels):
         inputs, labels = inputs.to(device), labels.to(device)
         inputs = inject_failure(args.failure_mode, step, rank, world_size, device, inputs)
@@ -368,18 +387,26 @@ def main():
         else:
             grad_sync = contextlib.nullcontext()
         # The record_function ranges name each part of the step in the profiler output.
+        # While profiling on a GPU, wait for the GPU at the end of each range, so the range
+        # measures the GPU work itself and not just the time to queue it.
         with grad_sync:
             with record_function("forward"):
                 loss = loss_fn(model(inputs), labels)
+                if profiling_now[0]:
+                    sync_device(device)
             # Stop with a clear error instead of silently training on garbage.
             if not torch.isfinite(loss):
                 raise FloatingPointError(f"NaN loss detected on rank {rank} at step {step} "
                                          f"(loss={loss.item()}). Check the input batch for NaN/Inf values.")
             with record_function("backward"):
                 loss.backward()  # with DDP (sync mode), gradients are shared between processes here
+                if profiling_now[0]:
+                    sync_device(device)
         with record_function("optimizer"):
             optimizer.step()
             optimizer.zero_grad()  # clear gradients for the next step
+            if profiling_now[0]:
+                sync_device(device)
         return loss
 
     batches = iter(loader)
@@ -402,6 +429,7 @@ def main():
         schedule = torch.profiler.schedule(wait=0, warmup=PROFILE_WARMUP, active=PROFILE_STEPS)
         base = path[:-len(".json")] if path.endswith(".json") else path
         saved = []  # the profiler clears its events after each cycle, so save them in on_trace_ready
+        profiling_now[0] = True
         with torch.profiler.profile(activities=activities, schedule=schedule,
                                     on_trace_ready=lambda p: saved.append(
                                         save_profile(p, base, rank, device, world_size))) as prof:
@@ -409,6 +437,7 @@ def main():
                 train_step(step, *next(batches))
                 sync_device(device)
                 prof.step()  # tells the profiler a step has finished
+        profiling_now[0] = False
         next_step += PROFILE_WARMUP + PROFILE_STEPS
         profile_info = saved[0]
         sync(device, world_size)
@@ -436,6 +465,7 @@ def main():
             "cpu_threads_per_process": torch.get_num_threads(),
             "torch_version": torch.__version__,
             "platform": platform.platform(),
+            "hardware": hardware_info(),
             "batch_size_per_process": args.batch_size,
             "timed_steps": args.steps,
             "total_time_sec": total_time,

@@ -1,0 +1,28 @@
+{
+  "device": "cpu",
+  "world_size": 2,
+  "backend": "gloo",
+  "sync_mode": "sync",
+  "cpu_threads_per_process": 2,
+  "torch_version": "2.14.1",
+  "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "hardware": {
+    "system": "Darwin-arm64",
+    "cpu_name": "Apple M4",
+    "gpu_name": "Apple GPU (MPS)",
+    "gpu_count": 0,
+    "torch_version": "2.14.1",
+    "cuda_version": null
+  },
+  "batch_size_per_process": 256,
+  "timed_steps": 300,
+  "total_time_sec": 6.744976916816086,
+  "samples_per_sec": 22772.501951349255,
+  "time_per_step_ms": 22.483256389386952,
+  "step_p50_ms": 22.405875148251653,
+  "step_p95_ms": 24.127795733511448,
+  "grad_values": 5267466,
+  "comm_ms_per_allreduce": 3.7277824990451336,
+  "final_loss_rank0": 2.3016905784606934,
+  "profile": null
+}

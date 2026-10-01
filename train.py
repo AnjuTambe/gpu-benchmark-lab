@@ -8,6 +8,10 @@ Two ways to run it:
 Options:
   --device {auto,cpu,mps,cuda}   where to run (default: auto)
   --steps N                      number of timed steps (default: 300)
+  --sync-mode {sync,no_sync,no_ddp}
+                                 sync:    normal DDP, gradients all-reduced every step (default)
+                                 no_sync: DDP wrapper, but gradients are never all-reduced
+                                 no_ddp:  no DDP wrapper, each process trains its own model
 
 Device rules for --device auto:
   - NVIDIA GPU (CUDA) first, then Apple GPU (MPS), otherwise CPU.
@@ -16,11 +20,12 @@ Device rules for --device auto:
 The DDP backend follows the device: "nccl" for CUDA, "gloo" for CPU.
 
 At the end, only rank 0 (the first process) prints the timing results and
-saves them to results/<device>_p<processes>_bs<batch>.json, for example
-results/cpu_p2_bs256.json.
+saves them to results/<device>_p<processes>_bs<batch>_<sync_mode>.json, for
+example results/cpu_p2_bs256_sync.json.
 """
 
 import argparse
+import contextlib
 import json
 import os
 import platform
@@ -51,6 +56,8 @@ def parse_args():
                         help="where to run (default: auto)")
     parser.add_argument("--steps", type=int, default=300,
                         help="number of timed training steps (default: 300)")
+    parser.add_argument("--sync-mode", choices=["sync", "no_sync", "no_ddp"], default="sync",
+                        help="how gradients are shared between processes (default: sync)")
     return parser.parse_args()
 
 
@@ -138,7 +145,7 @@ def main():
 
     if is_main:
         print(f"Processes: {world_size}  |  Device: {device}  |  Backend: {backend or 'none'}  "
-              f"|  CPU threads per process: {torch.get_num_threads()}")
+              f"|  CPU threads per process: {torch.get_num_threads()}  |  Sync mode: {args.sync_mode}")
 
     # Same seed everywhere, so every process builds the same starting model.
     torch.manual_seed(0)
@@ -157,7 +164,9 @@ def main():
     comm_ms = time_allreduce(num_grad_values, device, world_size)
 
     # With several processes, wrap the model in DDP so gradients are averaged across processes.
-    if world_size > 1:
+    # --sync-mode no_ddp skips this, so each process trains its own plain model.
+    use_ddp = world_size > 1 and args.sync_mode != "no_ddp"
+    if use_ddp:
         model = DDP(model, device_ids=[local_rank] if device.type == "cuda" else None)
 
     loss_fn = nn.CrossEntropyLoss()
@@ -180,8 +189,14 @@ def main():
     def train_step(inputs, labels):
         inputs, labels = inputs.to(device), labels.to(device)
         optimizer.zero_grad()
-        loss = loss_fn(model(inputs), labels)
-        loss.backward()  # with DDP, gradients are shared between processes here
+        # --sync-mode no_sync: DDP's no_sync() skips the gradient all-reduce in backward().
+        if use_ddp and args.sync_mode == "no_sync":
+            grad_sync = model.no_sync()
+        else:
+            grad_sync = contextlib.nullcontext()
+        with grad_sync:
+            loss = loss_fn(model(inputs), labels)
+            loss.backward()  # with DDP (sync mode), gradients are shared between processes here
         optimizer.step()
         return loss
 
@@ -211,6 +226,7 @@ def main():
             "device": str(device),
             "world_size": world_size,
             "backend": backend,
+            "sync_mode": args.sync_mode,
             "cpu_threads_per_process": torch.get_num_threads(),
             "torch_version": torch.__version__,
             "platform": platform.platform(),
@@ -236,9 +252,9 @@ def main():
             print(f"All-reduce:       {comm_ms:.3f} ms for {num_grad_values:,} values")
         print(f"Final loss:       {results['final_loss_rank0']:.4f}  (rank 0)")
 
-        # One file per setup, e.g. results/cpu_p2_bs256.json, so runs don't overwrite each other.
+        # One file per setup, e.g. results/cpu_p2_bs256_sync.json, so runs don't overwrite each other.
         os.makedirs(RESULTS_DIR, exist_ok=True)
-        path = os.path.join(RESULTS_DIR, f"{device.type}_p{world_size}_bs{BATCH_SIZE}.json")
+        path = os.path.join(RESULTS_DIR, f"{device.type}_p{world_size}_bs{BATCH_SIZE}_{args.sync_mode}.json")
         with open(path, "w") as f:
             json.dump(results, f, indent=2)
         print(f"Saved results to {path}")
